@@ -12,7 +12,7 @@
 {"instruction": "Generate an image of a beach with 5 clearly visible surfboards standing in the sand, evenly spaced and not overlapping. The surfboards should be of regular size and common shapes.", "object": "surfboards", "count": 5}
 {"instruction": "Generate an image of a ceiling with 5 clearly visible hanging lamps, evenly spaced and not overlapping. The hanging lamps should be of regular size and common shapes.", "object": "hanging lamps", "count": 5}
 {"instruction": "Generate an image of a road with 5 clearly visible traffic cones placed, evenly spaced and not overlapping. The traffic cones should be of regular size and common shapes.", "object": "traffic cones", "count": 5}
-{"instruction": "Generate an image of a sky with 5 clearly visible balloons floating, evenly spaced and not overlapping. The balloons should be of regular size and common shapes.", "count": 5}
+{"instruction": "Generate an image of a sky with 5 clearly visible balloons floating, evenly spaced and not overlapping. The balloons should be of regular size and common shapes.", "object": "balloons", "count": 5}
 {"instruction": "Generate an image of a counter with 6 clearly visible coffee cups, evenly spaced and not overlapping. The coffee cups should be of regular size and common shapes.", "object": "coffee cups", "count": 6}
 {"instruction": "Generate an image of a dining table with 6 clearly visible apples on it, evenly spaced and not overlapping. The apples should be of regular size and common shapes.", "object": "apples", "count": 6}
 {"instruction": "Generate an image of a shelf with 6 clearly visible vases placed apart, evenly spaced and not overlapping. The vases should be of regular size and common shapes.", "object": "vases", "count": 6}

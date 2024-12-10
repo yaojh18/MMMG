@@ -3,18 +3,18 @@
 {"instruction": "Generate an image of a birthday party. Do not include  cakes in the image.", "object": "cakes"}
 {"instruction": "Generate an image of a dining table. Do not include chairs in the image.", "object": "chairs"}
 {"instruction": "Generate an image of a cyclist. Do not include bicycle helmets in the image.", "object": "bicycle helmets"}
-{"instruction": "Generate an image of a construction site. Do not include a crane in the image.", "object": "a crane"}
+{"instruction": "Generate an image of a military parade. Do not include any flags in the image.", "object": "flags"}
 {"instruction": "Generate an image of people on the beach. Do not include umbrellas in the image.", "object": "umbrellas"}
 {"instruction": "Generate an image of scientists working in a lab. Do not include test tubes in the image.", "object": "test tubes"}
-{"instruction": "Generate an image of a firefighter. Do not include fire hose in the image.", "object": "fire hose"}
+{"instruction": "Generate an image of a bus stop. Do not include buses in the image.", "object": "buses"}
 {"instruction": "Generate an image of a train station platform. Do not include trains in the image.", "object": "trains"}
 {"instruction": "Generate an image of a business meeting. Do not include a laptop in the image.", "object": "a laptop"}
 {"instruction": "Generate an image of people having a picnic. Do not include a basket in the image.", "object": "a basket"}
 {"instruction": "Generate an image of a band performing on the stage. Do not include a guitar in the image.", "object": "a guitar"}
-{"instruction": "Generate an image of a living room. Do not include a sofa in the image.", "object": "a sofa"}
-{"instruction": "Generate an image of a kitchen. Do not include a dining table in the image.", "object": "a dining table"}
 {"instruction": "Generate an image of a bathroom. Do not include a bathtub in the image.", "object": "a bathtub"}
-{"instruction": "Generate an image of a garden. Do not include flowers in the image.", "object": "flowers"}
 {"instruction": "Generate an image of a school playground. Do not include slides in the image.", "object": "slides"}
 {"instruction": "Generate an image of a harbor. Do not include boats in the image.", "object": "boats"}
-{"instruction": "Generate an image of a traffic light. Do not include cars in the image.", "object": "cars"}
+{"instruction": "Generate an image of a crossroad with traffic lights. Do not include cars in the image.", "object": "cars"}
+{"instruction": "Generate an image of a classroom. Do not include a blackboard in the image.", "object": "a blackboard"}
+{"instruction": "Generate an image of firefighters at work. Do not include a fire truck in the image.", "object": "a fire truck"}
+{"instruction": "Generate an image of a basketball court. Do not include a basketball in the image.", "object": "a basketball"}

@@ -25,8 +25,9 @@ class Interface:
         pass
 
 
-class LabelInterface(Interface):
-    def __init__(self, eval_inst_list, **kwargs):
+class MultiLabelInterface(Interface):
+    def __init__(self, label_list, eval_inst_list, **kwargs):
+        self.label_list = label_list
         self.eval_inst_list = eval_inst_list
         self.eval_list = [FAILED_TOKEN] * len(self.eval_inst_list)
         super().__init__(**kwargs)
@@ -51,10 +52,13 @@ class LabelInterface(Interface):
                 label="Evaluation",
                 interactive=False
             )
-            judgement_choice = gr.Radio(choices=["Yes", "No"], label="Judgement")
+            judgement_choice = gr.Radio(
+                choices=self.label_list,
+                label="Judgement"
+            )
             with gr.Row():
-                next_button = gr.Button("Next")
-                prev_button = gr.Button("Prev", visible=False)
+                next_button = gr.Button("Next", interactive=False)
+                prev_button = gr.Button("Prev", visible=False, interactive=False)
             next_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(1), judgement_choice],
@@ -65,10 +69,19 @@ class LabelInterface(Interface):
                 inputs=[current_index, gr.State(-1), judgement_choice],
                 outputs=[current_index, inst_textbox, res_image, eval_textbox, judgement_choice, prev_button, next_button]
             )
+
+            def update_buttons_state(judgement):
+                return gr.update(interactive=(judgement is not None)), gr.update(interactive=(judgement is not None))
+
+            judgement_choice.change(
+                update_buttons_state,
+                inputs=[judgement_choice],
+                outputs=[prev_button, next_button]
+            )
             return interface
 
     def update_interface(self, current_index, step, judgement):
-        self.eval_list[current_index] = float(judgement == 'Yes')
+        self.eval_list[current_index] = self.label_list.index(judgement)
         current_index += step
         if current_index == len(self.data_list):
             self.is_finished.set()
@@ -83,5 +96,4 @@ class LabelInterface(Interface):
             gr.update(visible=(current_index - 1) >= 0),
             gr.update(visible=(current_index + 1) <= len(self.data_list))
         )
-
 

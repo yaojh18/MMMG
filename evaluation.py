@@ -1,5 +1,5 @@
-import numpy as np
 from sklearn.metrics import cohen_kappa_score
+from typing import Callable
 
 from model import *
 from interface import *
@@ -32,7 +32,6 @@ class EvalUnit:
                 res['audio_list'] = audio_list
             if len(self.inst_list) * sample_size == len(self.res_list):
                 return
-            return
 
         model = eval(f'{model_name}()')
         query_list = [inst['instruction'] for inst in self.inst_list for _ in range(sample_size)]
@@ -73,33 +72,52 @@ class EvalUnit:
         pass
 
 
-class IObjectInclude(EvalUnit):
-    inst_name = 'i_object_include'
+class IObject(EvalUnit):
+    label_list: tuple
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    @staticmethod
+    @abstractmethod
+    def instruction_func(inst: dict):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def gpt_judge_process_func(res: str):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def human_judge_process_func(res: str):
+        pass
 
     def evaluate(self):
         queries = []
-        instruction = 'Is there {} in the given image? Answer only yes or no.'
-        eval_inst_list = [instruction.format(inst['object']) for inst in self.inst_list for _ in
-                          range(self.sample_size)]
+        eval_inst_list = [self.instruction_func(inst) for inst in self.inst_list for _ in range(self.sample_size)]
 
         if not all(['gpt_eval' in res for res in self.res_list]):
             for res, inst in zip(self.res_list, eval_inst_list):
                 queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + inst, images=res['image_list']))
             responses = batch_query_openai(queries, model_name='gpt-4o')
-            responses = parse_responses(responses, pattern='(yes|no)',
-                                        post_process=lambda x: 1.0 if x.lower() == 'yes' else 0.0)
-            for data, response in zip(self.res_list, responses):
-                data['gpt_eval'] = response
+            parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
+            for data, res in zip(self.res_list, parsed_responses):
+                data['gpt_eval'] = res
             self.save()
 
         if not all(['human_eval' in res for res in self.res_list]):
-            interface = LabelInterface(eval_inst_list=eval_inst_list, data_list=self.res_list)
+            interface = MultiLabelInterface(
+                label_list=self.label_list,
+                eval_inst_list=eval_inst_list,
+                data_list=self.res_list
+            )
             interface.start()
             for data, human_eval in zip(self.res_list, interface.eval_list):
-                data['human_eval'] = human_eval
+                data['human_eval'] = self.human_judge_process_func(human_eval)
+            self.save()
+
+        if self.inst_name == 'i_object_counting':
+            for data, inst in zip(self.res_list, [inst for inst in self.inst_list for _ in range(self.sample_size)]):
+                data['human_eval'] = float(data['human_eval'] == (inst['count'] - 2))
+                data['gpt_eval'] = float(data['gpt_eval'] == (inst['count'] - 2))
             self.save()
 
         gpt_eval_list = [res['gpt_eval'] for res in self.res_list]
@@ -108,7 +126,7 @@ class IObjectInclude(EvalUnit):
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
         print(
             f"Cohen's Kappa for {self.inst_name}: ",
-            1.0 if gpt_eval_list == human_eval_list else cohen_kappa_score(gpt_eval_list, human_eval_list, labels=[0.0, 1.0])
+            1.0 if gpt_eval_list == human_eval_list else cohen_kappa_score(gpt_eval_list, human_eval_list)
         )
         print(
             f"Pearson Correlation for {self.inst_name}: ",
@@ -116,8 +134,74 @@ class IObjectInclude(EvalUnit):
         )
 
 
+class IObjectInclude(IObject):
+    inst_name = 'i_object_include'
+    label_list = ("Yes", "No")
+
+    @staticmethod
+    def instruction_func(inst: dict):
+        return f"Is/Are there {inst['object']} in the given image? Answer only yes or no.\n"
+
+    @staticmethod
+    def gpt_judge_process_func(res: str):
+        return 1.0 if res.lower().startswith('yes') else 0.0
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return 1.0 if res == 0 else 0.0
+
+
+class IObjectExclude(IObject):
+    inst_name = 'i_object_exclude'
+    label_list = ("Yes", "No")
+
+    @staticmethod
+    def instruction_func(inst: dict):
+        return f"Is/Are there {inst['object']} in the given image? Answer only yes or no.\n"
+
+    @staticmethod
+    def gpt_judge_process_func(res: str):
+        return 1.0 if res.lower().startswith('no') else 0.0
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return 1.0 if res == 1 else 0.0
+
+
+class IObjectCoT(IObject):
+    inst_name = 'i_object_cot'
+    label_list = ("Yes", "No")
+
+    @staticmethod
+    def instruction_func(inst: dict):
+        return f"Is the given image about {inst['object']}? Answer only yes or no.\n"
+
+    @staticmethod
+    def gpt_judge_process_func(res: str):
+        return 1.0 if res.lower().startswith('yes') else 0.0
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return 1.0 if res == 0 else 0.0
+
+
+class IObjectCounting(IObject):
+    inst_name = 'i_object_counting'
+    label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
+
+    @staticmethod
+    def instruction_func(inst: dict):
+        return f"How many {inst['object']} are there in the given image? Choose from the options:\nA. Less than 3\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\n Respond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information."
+
+    @staticmethod
+    def gpt_judge_process_func(res: str):
+        return ord(res.lower()[0]) - 97 if res.lower()[0] in ('a', 'b', 'c', 'd', 'e', 'f') else FAILED_TOKEN
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return res
+
+
 if __name__ == '__main__':
-    a = IObjectInclude(
-        model_name='Dalle3'
-    )
+    a = IObjectCounting(model_name='Dalle3')
     a.evaluate()
