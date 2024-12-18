@@ -1,5 +1,8 @@
+import numpy as np
 from sklearn.metrics import cohen_kappa_score
+import evaluate
 from typing import Callable
+import Levenshtein
 
 from model import *
 from interface import *
@@ -71,6 +74,10 @@ class EvalUnit:
     def evaluate(self):
         pass
 
+    @abstractmethod
+    def calculate_metrics(self):
+        pass
+
 
 class IObject(EvalUnit):
     label_list: tuple
@@ -78,6 +85,11 @@ class IObject(EvalUnit):
     @staticmethod
     @abstractmethod
     def instruction_func(inst: dict):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def human_instruction_func(inst: dict):
         pass
 
     @staticmethod
@@ -91,16 +103,16 @@ class IObject(EvalUnit):
         pass
 
     def evaluate(self):
-        queries = []
-        eval_inst_list = [self.instruction_func(inst) for inst in self.inst_list for _ in range(self.sample_size)]
+        eval_inst_list = [inst for inst in self.inst_list for _ in range(self.sample_size)]
 
         if not all(['gpt_eval' in res for res in self.res_list]):
-            for res, inst in zip(self.res_list, eval_inst_list):
-                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + inst, images=res['image_list']))
-            responses = batch_query_openai(queries, model_name='gpt-4o')
+            queries = []
+            for data, inst in zip(self.res_list, eval_inst_list):
+                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(inst), images=data['image_list']))
+            responses = batch(query_openai, queries, model='gpt-4o', temperature=0.0)
             parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
-            for data, res in zip(self.res_list, parsed_responses):
-                data['gpt_eval'] = res
+            for data, gpt_eval in zip(self.res_list, parsed_responses):
+                data['gpt_eval'] = gpt_eval
             self.save()
 
         if not all(['human_eval' in res for res in self.res_list]):
@@ -115,11 +127,12 @@ class IObject(EvalUnit):
             self.save()
 
         if self.inst_name == 'i_object_counting':
-            for data, inst in zip(self.res_list, [inst for inst in self.inst_list for _ in range(self.sample_size)]):
+            for data, inst in zip(self.res_list, eval_inst_list):
                 data['human_eval'] = float(data['human_eval'] == (inst['count'] - 2))
                 data['gpt_eval'] = float(data['gpt_eval'] == (inst['count'] - 2))
             self.save()
 
+    def calculate_metrics(self):
         gpt_eval_list = [res['gpt_eval'] for res in self.res_list]
         human_eval_list = [res['human_eval'] for res in self.res_list]
         print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(gpt_eval_list))
@@ -143,6 +156,10 @@ class IObjectInclude(IObject):
         return f"Is/Are there {inst['object']} in the given image? Answer only yes or no.\n"
 
     @staticmethod
+    def human_instruction_func(inst: dict):
+        return f"Is/Are there {inst['object']} in the given image?\n"
+
+    @staticmethod
     def gpt_judge_process_func(res: str):
         return 1.0 if res.lower().startswith('yes') else 0.0
 
@@ -158,6 +175,10 @@ class IObjectExclude(IObject):
     @staticmethod
     def instruction_func(inst: dict):
         return f"Is/Are there {inst['object']} in the given image? Answer only yes or no.\n"
+
+    @staticmethod
+    def human_instruction_func(inst: dict):
+        return f"Is/Are there {inst['object']} in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):
@@ -177,6 +198,10 @@ class IObjectCoT(IObject):
         return f"Is the given image about {inst['object']}? Answer only yes or no.\n"
 
     @staticmethod
+    def human_instruction_func(inst: dict):
+        return f"Is the given image about {inst['object']}?\n"
+
+    @staticmethod
     def gpt_judge_process_func(res: str):
         return 1.0 if res.lower().startswith('yes') else 0.0
 
@@ -191,7 +216,13 @@ class IObjectCounting(IObject):
 
     @staticmethod
     def instruction_func(inst: dict):
-        return f"How many {inst['object']} are there in the given image? Choose from the options:\nA. Less than 3\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\n Respond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information."
+        return (f"How many {inst['object']} are there in the given image? Choose from the options:\n"
+                f"A. Less than 3\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\n"
+                f"Respond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information.")
+
+    @staticmethod
+    def human_instruction_func(inst: dict):
+        return f"How many {inst['object']} are there in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):
@@ -202,6 +233,227 @@ class IObjectCounting(IObject):
         return res
 
 
+class ISpacial(EvalUnit):
+    @staticmethod
+    @abstractmethod
+    def instruction_func(inst: dict):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def human_instruction_func(inst: dict):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def gpt_judge_parse_func(res: str):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def gpt_judge_process_func(res: str, const: tuple):
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def human_judge_process_func(res: str):
+        pass
+
+    def evaluate(self):
+        eval_inst_list = [inst for inst in self.inst_list for _ in range(self.sample_size)]
+
+        if not all(['gpt_eval' in res for res in self.res_list]):
+            queries = []
+            idx = 0
+            for data, inst in zip(self.res_list, eval_inst_list):
+                for constraint in inst['constraints']:
+                    queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(constraint),
+                                                        images=data['image_list']))
+                data['gpt_eval'] = list(range(idx, idx + len(inst['constraints'])))
+                idx += len(inst['constraints'])
+            responses = batch(query_openai, queries, model='gpt-4o', temperature=0.0)
+            parsed_responses = [self.gpt_judge_parse_func(res) for res in responses]
+            for data, inst in zip(self.res_list, eval_inst_list):
+                data['gpt_eval'] = [self.gpt_judge_process_func(parsed_responses[gpt_eval], constraint) for
+                                    gpt_eval, constraint in zip(data['gpt_eval'], inst['constraints'])]
+            self.save()
+
+        if not all(['human_eval' in res for res in self.res_list]):
+            human_queries = []
+            human_res_list = []
+            idx = 0
+            for data, inst in zip(self.res_list, eval_inst_list):
+                human_res_list += [data] * len(inst['constraints'])
+                for constraint in inst['constraints']:
+                    human_queries.append(self.human_instruction_func(constraint))
+                data['human_eval'] = list(range(idx, idx + len(inst['constraints'])))
+                idx += len(inst['constraints'])
+            interface = MultiLabelInterface(
+                label_list=("Yes", "No"),
+                eval_inst_list=human_queries,
+                data_list=human_res_list
+            )
+            interface.start()
+            for data in self.res_list:
+                data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
+            self.save()
+
+    def calculate_metrics(self):
+        gpt_eval_list = [np.mean(res['gpt_eval']) for res in self.res_list]
+        human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
+        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(gpt_eval_list))
+        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
+        gpt_eval_list = np.concatenate([res['gpt_eval'] for res in self.res_list])
+        human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
+        print(f"Cohen's Kappa for {self.inst_name}: ", cohen_kappa_score(gpt_eval_list, human_eval_list))
+        print(f"Pearson Correlation for {self.inst_name}: ", np.corrcoef(gpt_eval_list, human_eval_list)[0, 1])
+
+
+class ISpacialAbsolute(ISpacial):
+    inst_name = 'i_spacial_absolute'
+
+    @staticmethod
+    def instruction_func(const: dict):
+        return (f'Where is {const[0]} in the given image? Choose from the options:\n'
+                f'A. bottom left B. bottom right C. up left D. up right E. none of above F. object not exist\n'
+                f'Do not provide any explanation, reasoning, or additional information.\n')
+
+    @staticmethod
+    def human_instruction_func(const: dict):
+        return f'Is there {const[0]} in the given image and locate at the {const[1]} part of the image?\n'
+
+    @staticmethod
+    def gpt_judge_parse_func(res: str):
+        return ord(res.lower()[0]) - 97 if res.lower()[0] in ('a', 'b', 'c', 'd', 'e', 'f') else FAILED_TOKEN
+
+    @staticmethod
+    def gpt_judge_process_func(res: str, const: tuple):
+        return float(res == {'bottom left': 0, 'bottom right': 1, 'top left': 2, 'top right': 3}[const[1]])
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return float(res == 0)
+
+
+class ISpacialRelative(ISpacial):
+    inst_name = 'i_spacial_relative'
+
+    @staticmethod
+    def instruction_func(const: dict):
+        if const[2] in ('to the left of', 'to the right of'):
+            return (
+                f'What is the relative left-right relationship of {const[0]} and {const[1]} in the given image? Be careful there may be multimple objects. Choose from the options:\n'
+                f'A. {const[0]} is to the left of {const[1]}.\n'
+                f'B. {const[0]} is to the right of {const[1]}.\n'
+                f'C. {const[0]} is either distinctly to the left or right of the {const[1]}.\n'
+                f'D. multiple {const[0]} or {const[1]} are in the given image and their relationship are inconsistent, thus unable to determine.\n'
+                f'E. either {const[0]} or {const[1]} is not clearly visible in the given image.\n'
+                f'Do not provide any explanation, reasoning, or additional information. Do not consider perspective.\n')
+        else:
+            return (
+                f'What is the relative up-down relationship of {const[0]} and {const[1]} in the given image? Be careful there may be multimple objects. Choose from the options:\n'
+                f'A. {const[0]} is above {const[1]}.\n'
+                f'B. {const[0]} is below {const[1]}.\n'
+                f'C. {const[0]} is either distinctly above or below {const[1]}.\n'
+                f'D. multiple {const[0]} or {const[1]} are in the given image and their relationship are inconsistent, thus unable to determine.\n'
+                f'E. either {const[0]} or {const[1]} is not clearly visible in the given image.\n'
+                f'Do not provide any explanation, reasoning, or additional information. Do not consider perspective.\n')
+
+    @staticmethod
+    def human_instruction_func(const: dict):
+        return f'Is {const[0]} {const[2]} {const[1]} in the given image?\n'
+
+    @staticmethod
+    def gpt_judge_parse_func(res: str):
+        return ord(res.lower()[0]) - 97 if res.lower()[0] in ('a', 'b', 'c', 'd') else FAILED_TOKEN
+
+    @staticmethod
+    def gpt_judge_process_func(res: str, const: tuple):
+        if const[2] in ('to the left of', 'above'):
+            return float(res == 0)
+        else:
+            return float(res == 1)
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return float(res == 0)
+
+
+class IOCR(EvalUnit):
+    inst_name = 'i_ocr'   # or 'i_ocr_long'
+
+    def __init__(self, inst_name, **kwargs):
+        self.inst_list = inst_name
+        super().__init__(**kwargs)
+
+    def evaluate(self):
+        if not all(['gpt_eval' in res for res in self.res_list]):
+            eval_inst_list = [inst for inst in self.inst_list for _ in range(self.sample_size)]
+            instruction = ("### Instruction:\n"
+                           "Recognize all the major English texts in the given image. Do not correct the text if it is misspelled, nonsense or wrong, output the most direct recognition result. Do not call any function.\n"
+                           "### Output format:\n"
+                           "[only a executable Python list of all recognized texts from top to down, from left to right]")
+            queries = []
+            for data, inst in zip(self.res_list, eval_inst_list):
+                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
+            responses = batch(query_openai, queries, model='gpt-4o', temperature=0.0)
+            for data, res, inst in zip(self.res_list, responses, eval_inst_list):
+                try:
+                    data['gpt_eval'] = ' '.join(eval(res)).lower().strip()
+                except Exception:
+                    data['gpt_eval'] = ''
+            self.save()
+
+        if not all(['human_eval' in res for res in self.res_list]):
+            interface = FreeLabelInterface(
+                eval_inst_list=["Please type the major recognized texts (case insensitive) from top to down, from left to right in the given image."] * len(self.res_list),
+                data_list=self.res_list
+            )
+            interface.start()
+            for data, human_eval in zip(self.res_list, interface.eval_list):
+                data['human_eval'] = human_eval.lower().strip()
+            self.save()
+
+    def calculate_metrics(self):
+        label_list = [inst['text'].lower().strip() for inst in self.inst_list for _ in range(self.sample_size)]
+        label_list = [label for label, res in zip(label_list, self.res_list) if res['gpt_eval'] != '']
+        gpt_eval_list = [res['gpt_eval'] for res in self.res_list if res['gpt_eval'] != '']
+        human_eval_list = [res['human_eval'] for res in self.res_list if res['gpt_eval'] != '']
+        rouge = evaluate.load('rouge')
+
+        rouge_list = [rouge.compute(predictions=[gpt_eval], references=[human_eval])['rougeL']
+                      for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
+        dist_list = [1.0 - Levenshtein.distance(gpt_eval, human_eval) / max(len(gpt_eval), len(human_eval))
+                     for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
+        print(f"RougeL for {self.inst_name}: ", np.mean(rouge_list))
+        print(f"Edit distance for {self.inst_name}: ", np.mean(dist_list))
+
+        rouge_list = [rouge.compute(predictions=[gpt_eval], references=[label])['rougeL']
+                      for gpt_eval, label in zip(gpt_eval_list, label_list)]
+        dist_list = [1.0 - Levenshtein.distance(gpt_eval, label) / max(len(gpt_eval), len(label))
+                     for gpt_eval, label in zip(gpt_eval_list, label_list)]
+        print(f"GPT evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list))
+        print(f"GPT evaluation edit distance for {self.inst_name}: ", np.mean(dist_list))
+
+        rouge_list = [rouge.compute(predictions=[human_eval], references=[label])['rougeL']
+                      for human_eval, label in zip(human_eval_list, label_list)]
+        dist_list = [1.0 - Levenshtein.distance(human_eval, label) / max(len(human_eval), len(label))
+                     for human_eval, label in zip(human_eval_list, label_list)]
+        print(f"Human evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list))
+        print(f"Human evaluation edit distance for {self.inst_name}: ", np.mean(dist_list))
+
+
+class IFormatColor(EvalUnit):
+    inst_name = 'i_format_color'
+
+    def evaluate(self):
+        pass
+
+    def calculate_metrics(self):
+        pass
+
+
 if __name__ == '__main__':
-    a = IObjectCounting(model_name='Dalle3')
+    a = IFormatColor(model_name='Dalle3')
     a.evaluate()
+    a.calculate_metrics()

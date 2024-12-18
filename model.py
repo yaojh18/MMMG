@@ -31,7 +31,7 @@ class Dalle3(Model):
     model_name = 'dalle3'
 
     def generate(self, query_list):
-        image_list = batch_generate_image_from_openai(query_list)
+        image_list = batch(generate_image_from_openai, query_list, model="dall-e-3")
         res_list = []
         for query, image in zip(query_list, image_list):
             res_list.append({

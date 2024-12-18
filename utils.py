@@ -1,3 +1,6 @@
+from typing import Callable
+
+import PIL
 import openai
 import time
 import base64
@@ -10,6 +13,7 @@ from tqdm import tqdm
 from PIL import Image
 from io import BytesIO
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from google.cloud import vision
 
 OPENAI_KEY = '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'
 IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
@@ -48,16 +52,15 @@ def generate_image_from_openai(index, prompt, model="dall-e-3"):
     return index, None
 
 
-def batch_generate_image_from_openai(prompt_list, model_name="dall-e-3"):
-    with ProcessPoolExecutor(max_workers=4) as executor:
-        futures = [executor.submit(generate_image_from_openai, index, prompt, model_name)
-                   for index, prompt in enumerate(prompt_list)]
-        image_dict = collections.defaultdict(None)
-        for job in tqdm(as_completed(futures), total=len(futures), desc="querying openai..."):
+def batch(func_name: Callable, data_list, num_worker=4, **kwargs):
+    with ProcessPoolExecutor(max_workers=num_worker) as executor:
+        futures = [executor.submit(func_name, index, data, **kwargs) for index, data in enumerate(data_list)]
+        res_dict = collections.defaultdict(None)
+        for job in tqdm(as_completed(futures), total=len(futures), desc="Working..."):
             index, res = job.result(timeout=None)
-            image_dict[index] = res
+            res_dict[index] = res
 
-    return [image_dict[i] for i in range(len(prompt_list))]
+    return [res_dict[i] for i in range(len(data_list))]
 
 
 def encode_image(image: Image.Image, dtype='png'):
@@ -103,7 +106,7 @@ def form_openai_mm_query(text, images=(), audios=()):
     }]
 
 
-def query_openai(prompt, index, model, max_tokens, temperature):
+def query_openai(index, prompt, model, temperature):
     client = openai.OpenAI(api_key=OPENAI_KEY)
     retry_count = 2
     retry_interval = 10
@@ -113,7 +116,6 @@ def query_openai(prompt, index, model, max_tokens, temperature):
             response = client.chat.completions.create(
                 messages=prompt,
                 model=model,
-                max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=1.0,
             )
@@ -130,18 +132,6 @@ def query_openai(prompt, index, model, max_tokens, temperature):
     return index, ''
 
 
-def batch_query_openai(prompt_list, model_name='gpt-4o-mini', max_new_tokens=768, temperature=0.0):
-    with ProcessPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(query_openai, prompt, index, model_name, max_new_tokens, temperature)
-                   for index, prompt in enumerate(prompt_list)]
-        response_dict = collections.defaultdict(str)
-        for job in tqdm(as_completed(futures), total=len(futures), desc="querying openai..."):
-            index, res = job.result(timeout=None)
-            response_dict[index] = res
-
-    return [response_dict[i] for i in range(len(prompt_list))]
-
-
 def parse_responses(responses, pattern, post_process=lambda x: x):
     pattern = re.compile(pattern, flags=re.IGNORECASE)
     new_responses = []
@@ -154,3 +144,38 @@ def parse_responses(responses, pattern, post_process=lambda x: x):
             result = FAILED_TOKEN
         new_responses.append(result)
     return new_responses
+
+
+def generate_ocr_from_gcd(index: int, image: Image.Image):
+    """
+    Make sure you set confidential first.
+    pip install google-cloud-vision
+    gcloud init
+    gcloud auth application-default login
+    """
+    image_bytes = BytesIO()
+    image.save(image_bytes, format='png')
+    image = vision.Image(content=image_bytes.getvalue())
+
+    client = vision.ImageAnnotatorClient()
+    retry_count = 2
+    retry_interval = 10
+
+    for _ in range(retry_count):
+        try:
+            response = client.text_detection(image=image, image_context={"language_hints": ["en"]},)
+            if response.error.message:
+                raise Exception(response.error.message)
+            results = []
+            for text in response.text_annotations:
+                vertices = [(vertex.x, vertex.y) for vertex in text.bounding_poly.vertices]
+                results.append({"text": text.description, "box": vertices})
+            return index, results
+        except Exception as e:
+            print("Error info: ", e)
+            print('Retrying....')
+            retry_count += 1
+            retry_interval *= 2
+            time.sleep(retry_interval)
+    print('Fail to get response.')
+    return index, []

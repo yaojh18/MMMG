@@ -1,6 +1,6 @@
 {"instruction": "Generate an image of people camping. Do not include tents in the image.", "object": "tents"}
 {"instruction": "Generate an image of a snowman. Do not include a carrot nose in the image.", "object": "a carrot nose"}
-{"instruction": "Generate an image of a birthday party. Do not include  cakes in the image.", "object": "cakes"}
+{"instruction": "Generate an image of a birthday party. Do not include cakes in the image.", "object": "cakes"}
 {"instruction": "Generate an image of a dining table. Do not include chairs in the image.", "object": "chairs"}
 {"instruction": "Generate an image of a cyclist. Do not include bicycle helmets in the image.", "object": "bicycle helmets"}
 {"instruction": "Generate an image of a military parade. Do not include any flags in the image.", "object": "flags"}
