@@ -1,6 +1,6 @@
-import json
-import os
-import soundfile as sf
+import random
+
+from OmniGen import OmniGenPipeline
 from abc import abstractmethod
 
 from utils import *
@@ -28,10 +28,10 @@ class Model:
 
 
 class Dalle3(Model):
-    model_name = 'dalle3'
+    model_name = 'dall-e-3'
 
     def generate(self, query_list):
-        image_list = batch(generate_image_from_openai, query_list, model="dall-e-3")
+        image_list = batch(generate_image_from_openai, query_list, model=self.model_name)
         res_list = []
         for query, image in zip(query_list, image_list):
             res_list.append({
@@ -42,3 +42,34 @@ class Dalle3(Model):
             })
         return res_list
 
+
+class OmniGen(Model):
+    def __init__(self):
+        super().__init__()
+        self.batch_size = 16
+        self.sample_size = 4
+        self.pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1")
+
+    def generate(self, query_list):
+        random.seed(0)
+        text_list = ['<img><|image_1|></img>' + query['instruction'] for query in query_list]
+        image_list = [query['image_list'] for query in query_list]
+        output_list = []
+        for begin in range(0, len(query_list), self.batch_size):
+            end = begin + self.batch_size if begin + self.batch_size < len(query_list) else len(query_list)
+            output_list += self.pipe(
+                prompt=text_list[begin: end],
+                input_images=image_list[begin: end],
+                height=512,
+                width=512,
+                seed=random.randint(0, 1000),
+            )
+        res_list = []
+        for query, output in zip(query_list, output_list):
+            res_list.append({
+                'query': query,
+                'response': IMAGE_TOKEN(0),
+                'image_list': [output],
+                'audio_list': []
+            })
+        return res_list

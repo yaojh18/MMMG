@@ -1,0 +1,15 @@
+{"instruction": "Generate an image about a bustling city street at dusk. The left half must be pure green (RGB: #008000).", "region": "left half", "color": "green"}
+{"instruction": "Generate an image about a peaceful countryside with rolling hills. The right half must be pure blue (RGB: #0000FF).", "region": "right half", "color": "blue"}
+{"instruction": "Generate an image about a futuristic cityscape at twilight. The upper half must be pure orange (RGB: #FF8000).", "region": "upper half", "color": "orange"}
+{"instruction": "Generate an image about a bustling marketplace in an ancient city. The lower half must be pure purple (RGB: #800080).", "region": "lower half", "color": "purple"}
+{"instruction": "Generate an image about a cosmic nebula swirling with stars. The upper half must be pure cyan (RGB: #00FFFF).", "region": "upper half", "color": "cyan"}
+{"instruction": "Generate an image about a grand castle hallway filled with torches. The upper third must be pure green (RGB: #008000).", "region": "upper third", "color": "green"}
+{"instruction": "Generate an image about a tropical island with palm trees. The lower third must be pure blue (RGB: #0000FF).", "region": "lower third", "color": "blue"}
+{"instruction": "Generate an image about a haunted mansion on a stormy night. The left third must be pure black (RGB: #000000).", "region": "left third", "color": "black"}
+{"instruction": "Generate an image about an enchanted garden in spring bloom. The right third must be pure pink (RGB: #FF80FF).", "region": "right third", "color": "pink"}
+{"instruction": "Generate an image about a futuristic research lab on an alien planet. The upper third must be pure cyan (RGB: #00FFFF).", "region": "upper third", "color": "cyan"}
+{"instruction": "Generate an image about an underwater coral reef teeming with fish. The upper quarter must be pure purple (RGB: #800080).", "region": "upper quarter", "color": "purple"}
+{"instruction": "Generate an image about a winter wonderland with snow-covered trees. The lower quarter must be pure white (RGB: #FFFFFF).", "region": "lower quarter", "color": "white"}
+{"instruction": "Generate an image about a medieval town during a festival. The left quarter must be pure orange (RGB: #FF8000).", "region": "left quarter", "color": "orange"}
+{"instruction": "Generate an image about a calm oasis in a scorching desert. The right quarter must be pure yellow (RGB: #FFFF00).", "region": "right quarter", "color": "yellow"}
+{"instruction": "Generate an image about a serene mountain lake at dusk. The lower quarter must be pure red (RGB: #FF0000).", "region": "lower quarter", "color": "red"}

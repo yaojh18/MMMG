@@ -1,6 +1,3 @@
-from typing import Callable
-
-import PIL
 import openai
 import time
 import base64
@@ -9,9 +6,12 @@ import collections
 import re
 import numpy as np
 import soundfile as sf
+import matplotlib.pyplot as plt
 from tqdm import tqdm
-from PIL import Image
+from PIL import Image, ImageChops
 from io import BytesIO
+from typing import Callable
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from google.cloud import vision
 
@@ -20,6 +20,17 @@ IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
 AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'
 SAMPLE_RATE = 22050
+
+idx2letter = [
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+]
+letter2idx = {
+    'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'H': 7,
+    'I': 8, 'J': 9, 'K': 10, 'L': 11, 'M': 12, 'N': 13, 'O': 14, 'P': 15,
+    'Q': 16, 'R': 17, 'S': 18, 'T': 19, 'U': 20, 'V': 21, 'W': 22, 'X': 23,
+    'Y': 24, 'Z': 25
+}
 
 
 def generate_image_from_openai(index, prompt, model="dall-e-3"):
@@ -146,7 +157,7 @@ def parse_responses(responses, pattern, post_process=lambda x: x):
     return new_responses
 
 
-def generate_ocr_from_gcd(index: int, image: Image.Image):
+def generate_ocr_from_gcd(index: int, image: Image.Image, language='zh'):
     """
     Make sure you set confidential first.
     pip install google-cloud-vision
@@ -163,7 +174,7 @@ def generate_ocr_from_gcd(index: int, image: Image.Image):
 
     for _ in range(retry_count):
         try:
-            response = client.text_detection(image=image, image_context={"language_hints": ["en"]},)
+            response = client.text_detection(image=image, image_context={"language_hints": [language]}, )
             if response.error.message:
                 raise Exception(response.error.message)
             results = []
@@ -179,3 +190,115 @@ def generate_ocr_from_gcd(index: int, image: Image.Image):
             time.sleep(retry_interval)
     print('Fail to get response.')
     return index, []
+
+
+def calculate_f1(text1, text2):
+    tokens1 = text1.split(' ')
+    tokens2 = text2.split(' ')
+    counter1 = Counter(tokens1)
+    counter2 = Counter(tokens2)
+
+    overlap = sum((counter1 & counter2).values())
+    precision = overlap / sum(counter2.values()) if counter2 else 0
+    recall = overlap / sum(counter1.values()) if counter1 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    return f1
+
+
+def color_condition_range(image: Image.Image, condition: str):
+    # cond_func = {
+    #     "green": lambda color: 75 <= color[0] <= 195,
+    #     "blue": lambda color: 175 <= color[0] <= 260,
+    #     "yellow": lambda color: 20 <= color[0] <= 70,
+    #     "gray": lambda color: color[1] <= 15 or color[2] <= 15,
+    #     "pink": lambda color: (0 <= color[0] <= 15 or 280 <= color[0] <= 360) and color[1] <= 85 and color[2] >= 35,
+    #     "red": lambda color: (0 <= color[0] <= 30 or 320 <= color[0] <= 360),
+    #     "orange": lambda color: 0 <= color[0] <= 50,
+    #     "purple": lambda color: 220 <= color[0] <= 310,
+    #     "cyan": lambda color: 155 <= color[0] <= 215,
+    # }[condition]
+
+    cond_func = {
+        "green": lambda color: 80 <= color[0] <= 170,
+        "blue": lambda color: 180 <= color[0] <= 260,
+        "yellow": lambda color: 30 <= color[0] <= 80,
+        "gray": lambda color: color[1] <= 15 or color[2] <= 15,
+        "pink": lambda color: (0 <= color[0] <= 10 or 280 <= color[0] <= 360) and color[1] <= 75 and color[2] >= 50,
+        "red": lambda color: (0 <= color[0] <= 30 or 330 <= color[0] <= 360),
+        "orange": lambda color: 10 <= color[0] <= 50,
+        "purple": lambda color: 240 <= color[0] <= 310,
+        "cyan": lambda color: 150 <= color[0] <= 210,
+    }[condition]
+
+    image = image.convert('HSV')
+    img_arr = np.array(image)
+    img_arr = np.dot(img_arr, np.diag([360 / 255, 100 / 255, 100 / 255]))
+    img_cond = np.apply_along_axis(cond_func, axis=-1, arr=img_arr)
+    # black_or_white = np.apply_along_axis(lambda color: color[1] <= 15 or color[2] <= 15, axis=-1, arr=img_arr) if condition != 'gray' else np.zeros_like(img_cond)
+    # final_score = np.where(img_cond, 1, -10) + np.where(black_or_white, 10, 0)
+    # final_score = np.clip(final_score, a_min=None, a_max=1).reshape(img_cond.shape) + np.where(black_or_white, -1, 0)
+
+    # visualize for debugging
+    # plt.imshow(img_cond > 0, cmap='gray', interpolation='nearest')
+    # plt.axis('off')
+    # plt.show()
+
+    # return float(final_score.mean()) / 2 + 0.5
+    return img_cond.mean()
+
+
+def color_condition_exact(image: Image.Image, condition: str):
+    color = {
+        "green": (0, 128, 0),
+        "blue": (0, 0, 255),
+        "yellow": (255, 255, 0),
+        "white": (255, 255, 255),
+        "black": (0, 0, 0),
+        "pink": (255, 128, 255),
+        "red": (255, 0, 0),
+        "orange": (255, 128, 0),
+        "purple": (128, 0, 128),
+        "cyan": (0, 255, 255),
+    }[condition]
+    ref_image = Image.new("RGB", image.size, color)
+    diff = ImageChops.difference(image, ref_image)
+    return (np.array(diff).mean(axis=-1) < 25.6).mean()
+
+
+def symmetry_condition(image: Image.Image, condition: str):
+    if condition == "center":
+        rotated = image.rotate(180)
+        diff = ImageChops.difference(image, rotated)
+    elif condition == "horizontal":
+        width, height = image.size
+        top_half = image.crop((0, 0, width, height // 2))
+        bottom_half = image.crop((0, height // 2, width, height))
+        bottom_half_flipped = bottom_half.transpose(Image.FLIP_TOP_BOTTOM)
+        diff = ImageChops.difference(top_half, bottom_half_flipped)
+    elif condition == "vertical":
+        width, height = image.size
+        left_half = image.crop((0, 0, width // 2, height))
+        right_half = image.crop((width // 2, 0, width, height))
+        right_half_flipped = right_half.transpose(Image.FLIP_LEFT_RIGHT)
+        diff = ImageChops.difference(left_half, right_half_flipped)
+    else:
+        raise NotImplementedError
+
+    return (np.array(diff).mean(axis=-1) < 25.6).mean()
+
+
+# def object_segmentation(image_path):
+#     config_file = '../mmdetection/configs/mask2former/mask2former_swin-s-p4-w7-224_8xb2-lsj-50e_coco.py'
+#     checkpoint_file = '../mmdetection/checkpoints/mask2former_swin-s-p4-w7-224_8xb2-lsj-50e_coco_20220504_001756-c9d0c4f2.pth'
+#     with open('./data/object_names.txt', 'r') as cls_file:
+#         classnames = [line.strip() for line in cls_file]
+#     confidence_threshold = 0.3
+#     detected = []
+#     model = init_detector(config_file, checkpoint_file, device='cuda:0')
+#     result = inference_detector(model, image_path).pred_instances
+#     scores, labels, bboxes = result.scores, result.labels, result.bboxes
+#     detected_labels = labels[scores >= confidence_threshold]
+#     detected_bboxes = bboxes[scores >= confidence_threshold]
+#     for label, bbox in zip(detected_labels, detected_bboxes):
+#         detected.append((classnames[label], bbox))
+#     return detected

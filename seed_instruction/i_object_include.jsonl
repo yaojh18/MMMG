@@ -8,13 +8,13 @@
 {"instruction": "Generate an image of a crowded beach. Please include a snowman in the image.", "object": "a snowman"}
 {"instruction": "Generate an image of a jungle waterfall. Please include a piano in the image.", "object": "a piano"}
 {"instruction": "Generate an image of a library. Please include a surfboard in the image.", "object": "a surfboard"}
-{"instruction": "Generate an image of a canyon landscape. Please include a lighthouse in the image.", "object": "a lighthouse"}
-{"instruction": "Generate an image of the surface of Mars. Please include a kangaroo in the image.", "object": "a kangaroo"}
-{"instruction": "Generate an image of a medieval knight on horseback. Please include a laptop computer in the image.", "object": "a laptop computer"}
-{"instruction": "Generate an image of an astronaut on the moon. Please include a cat in the image.", "object": "a cat"}
-{"instruction": "Generate an image of a pirate ship at sea. Please include a car in the image.", "object": "a car"}
-{"instruction": "Generate an image of a busy office environment. Please include a dinosaur in the image.", "object": "a dinosaur"}
-{"instruction": "Generate an image of a sunset over the ocean. Please include a train in the image.", "object": "a train"}
-{"instruction": "Generate an image of a dog playing in a park. Please include a shark in the image.", "object": "a shark"}
-{"instruction": "Generate an image of an airport. Please include grass in the image.", "object": "grass"}
-{"instruction": "Generate an image of an old western town. Please include a helicopter in the image.", "object": "a helicopter"}
+{"instruction": "Generate an image of an ancient Greek amphitheater. Please include a spaceship and a giraffe in the image.", "object": ["a spaceship", "a giraffe"]}
+{"instruction": "Generate an image of a bustling carnival at night. Please include a piano and a lighthouse in the image.", "object": ["a piano", "a lighthouse"]}
+{"instruction": "Generate an image of a quiet Japanese garden. Please include a fire truck and a teddy bear in the image.", "object": ["a fire truck", "a teddy bear"]}
+{"instruction": "Generate an image of a volcanic crater. Please include a laptop computer and a shark in the image.", "object": ["a laptop computer", "a shark"]}
+{"instruction": "Generate an image of a busy office environment. Please include a train and a rubber duck in the image.", "object": ["a train", "a rubber duck"]}
+{"instruction": "Generate an image of a woodland clearing in autumn. Please include a classic car and a robotic arm in the image.", "object": ["a classic car", "a robotic arm"]}
+{"instruction": "Generate an image of an enchanted library hidden in a forest. Please include a pirate's parrot and a vintage telephone in the image.", "object": ["a pirate's parrot", "a vintage telephone"]}
+{"instruction": "Generate an image of a grand opera house stage. Please include a helicopter and a guitar in the image.", "object": ["a helicopter", "a guitar"]}
+{"instruction": "Generate an image of a dog playing in a park. Please include a train and a shoe in the image.", "object": ["a train", "a shoe"]}
+{"instruction": "Generate an image of a sunset over the ocean. Please include a donut and a car in the image.", "object": ["a donut", "a car"]}
