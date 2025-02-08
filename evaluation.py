@@ -2,11 +2,11 @@ import evaluate
 import json
 import os
 
-import numpy as np
-import setuptools.errors
+import pandas as pd
 import unicodedata
+import torchaudio
+import itertools
 
-from sklearn.metrics import cohen_kappa_score
 from model import *
 from interface import *
 
@@ -35,7 +35,10 @@ class EvalUnit:
                 res['image_list'] = image_list
                 audio_list = []
                 for audio_name in res['audio_list']:
-                    audio_list.append(sf.read(f'./output/{model_name}/audio/{self.inst_name}_{audio_name}.flac'))
+                    audio, sr = librosa.load(f'./output/{model_name}/audio/{self.inst_name}_{audio_name}.wav')
+                    if sr != SAMPLE_RATE:
+                        audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
+                    audio_list.append(audio)
                 res['audio_list'] = audio_list
             if len(self.inst_list) == len(self.res_list):
                 return
@@ -50,7 +53,7 @@ class EvalUnit:
                 if 'image_list' in inst:
                     query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
                 if 'audio_list' in inst:
-                    query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.flac' for idx in inst['audio_list']]
+                    query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
                 query_list.append(query)
         self.res_list = model.generate(query_list)
         self.save(save_all=True)
@@ -82,14 +85,14 @@ class EvalUnit:
                 image.save(output_path + f'image/{self.inst_name}_{idx}.png')
         if save_all:
             for idx, audio in enumerate(audio_list):
-                sf.write(output_path + f'audio/{self.inst_name}_{idx}.flac', audio, SAMPLE_RATE)
+                torchaudio.save(output_path + f'audio/{self.inst_name}_{idx}.wav', audio, SAMPLE_RATE)
 
-    def load_mm(self):
+    def load_inst_mm(self):
         for inst in self.inst_list:
             if 'image_list' in inst:
                 inst['image_list'] = [Image.open(f'./seed_instruction/image/{self.inst_name}_{idx}.png') for idx in inst['image_list']]
             if 'audio_list' in inst:
-                inst['audio_list'] = [sf.read(f'./seed_instruction/audio/{self.inst_name}_{idx}.flac') for idx in inst['audio_list']]
+                inst['audio_list'] = [librosa.load(f'./seed_instruction/audio/{self.inst_name}_{idx}.wav') for idx in inst['audio_list']]
 
     def pad_inst_list(self):
         self.inst_list = [inst for inst in self.inst_list for _ in range(self.sample_size)]
@@ -98,13 +101,9 @@ class EvalUnit:
     def evaluate(self):
         pass
 
+    @abstractmethod
     def calculate_metrics(self):
-        gpt_eval_list = [res['gpt_eval'] for res in self.res_list]
-        human_eval_list = [res['human_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(gpt_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Cohen's Kappa for {self.inst_name}: ", cohen_kappa_score(gpt_eval_list, human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", np.corrcoef(gpt_eval_list, human_eval_list)[0, 1])
+        pass
 
 
 class IObject(EvalUnit):
@@ -112,12 +111,12 @@ class IObject(EvalUnit):
 
     @staticmethod
     @abstractmethod
-    def instruction_func(inst: dict):
+    def instruction_func(obj: str):
         pass
 
     @staticmethod
     @abstractmethod
-    def human_instruction_func(inst: dict):
+    def human_instruction_func(obj: str):
         pass
 
     @staticmethod
@@ -133,48 +132,17 @@ class IObject(EvalUnit):
     def evaluate(self):
         if not all(['gpt_eval' in res for res in self.res_list]):
             queries = []
-            for data, inst in zip(self.res_list, self.inst_list):
-                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(inst), images=data['image_list']))
-            responses = batch(query_openai, queries, model='gpt-4o-2024-11-20', temperature=0.0)
-            parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
-            for data, gpt_eval in zip(self.res_list, parsed_responses):
-                data['gpt_eval'] = gpt_eval
-            self.save()
-
-        if not all(['human_eval' in res for res in self.res_list]):
-            interface = MultiLabelInterface(
-                label_list=self.label_list,
-                eval_inst_list=[self.human_instruction_func(inst) for inst in self.inst_list],
-                data_list=self.res_list
-            )
-            interface.start()
-            for data, human_eval in zip(self.res_list, interface.eval_list):
-                data['human_eval'] = self.human_judge_process_func(human_eval)
-            self.save()
-
-        if self.inst_name == 'i_object_counting':
-            for data, inst in zip(self.res_list, self.inst_list):
-                data['human_eval'] = float(data['human_eval'] == (inst['count'] - 2))
-                data['gpt_eval'] = float(data['gpt_eval'] == (inst['count'] - 2))
-            self.save()
-
-
-class IObjectInclude(EvalUnit):
-    inst_name = 'i_object_include'
-
-    def evaluate(self):
-        if not all(['gpt_eval' in res for res in self.res_list]):
-            queries = []
             idx = 0
             for data, inst in zip(self.res_list, self.inst_list):
                 obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
                 queries += [form_openai_mm_query(
-                    IMAGE_TOKEN(0) + f"Is/Are there {obj} in the given image? Answer only yes or no.\n",
-                    images=data['image_list']) for obj in obj_list]
+                    IMAGE_TOKEN(0) + self.instruction_func(obj),
+                    images=data['image_list']) for obj in obj_list
+                ]
                 data['gpt_eval'] = list(range(idx, idx + len(obj_list)))
                 idx += len(obj_list)
-            responses = batch(query_openai, queries, model='gpt-4o-2024-11-20', temperature=0.0)
-            parsed_responses = [1.0 if res.lower().startswith('yes') else 0.0 for res in responses]
+            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+            parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
             for data in self.res_list:
                 data['gpt_eval'] = [parsed_responses[idx] for idx in data['gpt_eval']]
             self.save()
@@ -185,18 +153,24 @@ class IObjectInclude(EvalUnit):
             idx = 0
             for data, inst in zip(self.res_list, self.inst_list):
                 obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
-                human_inst_list += [f"Is/Are there {obj} in the given image?" for obj in obj_list]
+                human_inst_list += [self.human_instruction_func(obj) for obj in obj_list]
                 human_res_list += [data] * len(obj_list)
                 data['human_eval'] = list(range(idx, idx + len(obj_list)))
                 idx += len(obj_list)
             interface = MultiLabelInterface(
-                label_list=("Yes", "No"),
+                label_list=self.label_list,
                 eval_inst_list=human_inst_list,
-                data_list=human_res_list
+                data_list=human_res_list,
             )
             interface.start()
             for data in self.res_list:
-                data['human_eval'] = [1.0 if interface.eval_list[idx] == 0 else 0.0 for idx in data['human_eval']]
+                data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
+            self.save()
+
+        if self.inst_name == 'i_object_counting':
+            for data, inst in zip(self.res_list, self.inst_list):
+                data['human_eval'] = float(data['human_eval'] == (inst['count'] - 2))
+                data['gpt_eval'] = float(data['gpt_eval'] == (inst['count'] - 2))
             self.save()
 
     def calculate_metrics(self):
@@ -206,27 +180,37 @@ class IObjectInclude(EvalUnit):
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
         gpt_eval_list = np.concatenate([res['gpt_eval'] for res in self.res_list])
         human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(
-            f"Cohen's Kappa for {self.inst_name}: ",
-            1.0 if all(gpt_eval_list == human_eval_list) else cohen_kappa_score(gpt_eval_list, human_eval_list)
-        )
-        print(
-            f"Pearson Correlation for {self.inst_name}: ",
-            1.0 if all(gpt_eval_list == human_eval_list) else np.corrcoef(gpt_eval_list, human_eval_list)[0, 1]
-        )
+        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(gpt_eval_list, human_eval_list))
+        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(gpt_eval_list, human_eval_list))
 
 
-class IObjectExclude(IObject):
+class IObjectInclude(IObject):
+    inst_name = 'i_object_include'
+    label_list = ('Yes', 'No')
+
+    @staticmethod
+    def instruction_func(obj):
+        return f"Is/Are there {obj} in the given image? Answer only yes or no.\n"
+
+    @staticmethod
+    def human_instruction_func(obj):
+        return f"Is/Are there {obj} in the given image?\n"
+
+    @staticmethod
+    def gpt_judge_process_func(res: str):
+        return 1.0 if res.lower().startswith('yes') else 0.0
+
+    @staticmethod
+    def human_judge_process_func(res: str):
+        return 1.0 if res == 0 else 0.0
+
+
+class IObjectAttribute(IObjectInclude):
+    inst_name = 'i_object_attribute'
+    
+
+class IObjectExclude(IObjectInclude):
     inst_name = 'i_object_exclude'
-    label_list = ("Yes", "No")
-
-    @staticmethod
-    def instruction_func(inst: dict):
-        return f"Is/Are there {inst['object']} in the given image? Answer only yes or no.\n"
-
-    @staticmethod
-    def human_instruction_func(inst: dict):
-        return f"Is/Are there {inst['object']} in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):
@@ -237,25 +221,17 @@ class IObjectExclude(IObject):
         return 1.0 if res == 1 else 0.0
 
 
-class IObjectCoT(IObject):
+class IObjectCoT(IObjectInclude):
     inst_name = 'i_object_cot'
     label_list = ("Yes", "No")
 
     @staticmethod
-    def instruction_func(inst: dict):
-        return f"Is the given image about {inst['object']}? Answer only yes or no.\n"
+    def instruction_func(obj):
+        return f"Is the given image about {obj}? Answer only yes or no.\n"
 
     @staticmethod
-    def human_instruction_func(inst: dict):
-        return f"Is the given image about {inst['object']}?\n"
-
-    @staticmethod
-    def gpt_judge_process_func(res: str):
-        return 1.0 if res.lower().startswith('yes') else 0.0
-
-    @staticmethod
-    def human_judge_process_func(res: str):
-        return 1.0 if res == 0 else 0.0
+    def human_instruction_func(obj):
+        return f"Is the given image about {obj}?\n"
 
 
 class IObjectCounting(IObject):
@@ -316,7 +292,7 @@ class ISpacial(EvalUnit):
                     queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(constraint), images=data['image_list']))
                 data['gpt_eval'] = list(range(idx, idx + len(inst['constraints'])))
                 idx += len(inst['constraints'])
-            responses = batch(query_openai, queries, model='gpt-4o-2024-11-20', temperature=0.0)
+            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
             parsed_responses = [self.gpt_judge_parse_func(res) for res in responses]
             for data, inst in zip(self.res_list, self.inst_list):
                 data['gpt_eval'] = [self.gpt_judge_process_func(parsed_responses[gpt_eval], constraint) for
@@ -350,8 +326,8 @@ class ISpacial(EvalUnit):
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
         gpt_eval_list = np.concatenate([res['gpt_eval'] for res in self.res_list])
         human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Cohen's Kappa for {self.inst_name}: ", cohen_kappa_score(gpt_eval_list, human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", np.corrcoef(gpt_eval_list, human_eval_list)[0, 1])
+        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(gpt_eval_list, human_eval_list))
+        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(gpt_eval_list, human_eval_list))
 
 
 class ISpacialAbsolute(ISpacial):
@@ -425,12 +401,7 @@ class ISpacialRelative(ISpacial):
 
 
 class IOCR(EvalUnit):
-    inst_name = 'i_ocr'   # or 'i_ocr_long'
-
-    def __init__(self, inst_name=None, **kwargs):
-        if inst_name is not None:
-            self.inst_name = inst_name
-        super().__init__(**kwargs)
+    inst_name = 'i_ocr'
 
     def evaluate(self):
         if not all(['gpt_eval' in res for res in self.res_list]):
@@ -441,7 +412,7 @@ class IOCR(EvalUnit):
             queries = []
             for data in self.res_list:
                 queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
-            responses = batch(query_openai, queries, model='gpt-4o-2024-11-20', temperature=0.0)
+            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
             for data, res in zip(self.res_list, responses):
                 try:
                     data['gpt_eval'] = self.normalize_text(' '.join(eval(res)).lower().strip())
@@ -464,47 +435,95 @@ class IOCR(EvalUnit):
         label_list = [label for label, res in zip(label_list, self.res_list) if res['gpt_eval'] != '' or not ignore_null]
         gpt_eval_list = [res['gpt_eval'] for res in self.res_list if res['gpt_eval'] != '' or not ignore_null]
         human_eval_list = [res['human_eval'] for res in self.res_list if res['gpt_eval'] != '' or not ignore_null]
-        rouge = evaluate.load('rouge')
-
-        rouge_list = [1.0 if gpt_eval == '' and human_eval == '' else rouge.compute(predictions=[gpt_eval], references=[human_eval])['rougeL']
-                      for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
-        f1_dist = [1.0 if gpt_eval == '' and human_eval == '' else calculate_f1(gpt_eval, human_eval)
-                   for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
-        print(f"RougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
-        print(f"F1 for {self.inst_name}: ", np.mean(f1_dist[8:]))
-
-        rouge_list = [1.0 if gpt_eval == '' and label == '' else rouge.compute(predictions=[gpt_eval], references=[label])['rougeL']
-                      for gpt_eval, label in zip(gpt_eval_list, label_list)]
-        f1_dist = [1.0 if gpt_eval == '' and label == '' else calculate_f1(gpt_eval, label)
-                   for gpt_eval, label in zip(gpt_eval_list, label_list)]
-        print(f"GPT evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
-        print(f"GPT evaluation F1 for {self.inst_name}: ", np.mean(f1_dist[8:]))
-
-        rouge_list = [1.0 if human_eval == '' and label == '' else rouge.compute(predictions=[human_eval], references=[label])['rougeL']
-                      for human_eval, label in zip(human_eval_list, label_list)]
-        f1_dist = [1.0 if human_eval == '' and label == '' else calculate_f1(human_eval, label)
-                   for human_eval, label in zip(human_eval_list, label_list)]
-        print(f"Human evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
-        print(f"Human evaluation F1 for {self.inst_name}: ", np.mean(f1_dist[8:]))
-
+        self._calculate_metrics(label_list, gpt_eval_list, human_eval_list)
 
     @staticmethod
     def normalize_text(text):
         normalized_text = unicodedata.normalize('NFD', text)
         return ''.join(char for char in normalized_text if unicodedata.category(char) != 'Mn')
 
+    def _calculate_metrics(self, label_list, gpt_eval_list, human_eval_list):
+        rouge = evaluate.load('rouge')
+        wer = evaluate.load('wer')
 
-class IFormatColor(EvalUnit):
-    inst_name = 'i_format_color'
+        rouge_list = [1.0 if gpt_eval == '' and human_eval == '' else
+                      rouge.compute(predictions=[gpt_eval], references=[human_eval])['rougeL']
+                      for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
+        wer_list = [1.0 if gpt_eval == '' and human_eval == '' else 0.0 if human_eval == '' else
+                    1.0 - wer.compute(predictions=[gpt_eval], references=[human_eval])
+                    for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
+        print(f"RougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
+        print(f"Word Error Rate for {self.inst_name}: ", np.mean(wer_list[8:]))
+
+        rouge_list = [1.0 if gpt_eval == '' and label == '' else
+                      rouge.compute(predictions=[gpt_eval], references=[label])['rougeL']
+                      for gpt_eval, label in zip(gpt_eval_list, label_list)]
+        wer_list = [1.0 if gpt_eval == '' and label == '' else 0.0 if label == '' else
+                    1.0 - wer.compute(predictions=[gpt_eval], references=[label])
+                    for gpt_eval, label in zip(gpt_eval_list, label_list)]
+        print(f"GPT evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
+        print(f"GPT evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list[8:]))
+
+        rouge_list = [1.0 if human_eval == '' and label == '' else
+                      rouge.compute(predictions=[human_eval], references=[label])['rougeL']
+                      for human_eval, label in zip(human_eval_list, label_list)]
+        wer_list = [1.0 if human_eval == '' and label == '' else 0.0 if label == '' else
+                    1.0 - wer.compute(predictions=[human_eval], references=[label])
+                    for human_eval, label in zip(human_eval_list, label_list)]
+        print(f"Human evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
+        print(f"Human evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list[8:]))
+
+
+class IOCRLong(IOCR):
+    inst_name = 'i_ocr_long'
+    
+
+class IOCRGerman(IOCR):
+    inst_name = 'i_ocr_german'
+
+
+class IOCRChinese(IOCR):
+    inst_name = 'i_ocr_chinese'
 
     def evaluate(self):
-        for data, inst in zip(self.res_list, self.inst_list):
-            data['auto_eval'] = color_condition_range(data['image_list'][0], inst['color'])
-        self.save()
+        instruction = ("### Instruction:\n"
+                       "You are a conservative text recognition model. Your task is to recognize all the major Chinese characters in the given image. If the Chinese characters in the image are wrongly written or distorted, you should return empty result. Do not call any function.\n"
+                       "### Output format:\n"
+                       "Ony a string of all recognized texts from top to down, from left to right. Do not add quotations.")
+        if not all(['gpt_eval' in res for res in self.res_list]):
+            queries = []
+            for data in self.res_list:
+                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
+            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+            for data, res in zip(self.res_list, responses):
+                data['gpt_eval'] = ''.join(re.findall(r'[\u4e00-\u9fff]', res))
+            self.save()
+
+        if not all(['gemini_eval' in res for res in self.res_list]):
+            queries = []
+            for data in self.res_list:
+                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
+            responses = batch(query_openai, queries, model='gemini-2.0-flash-exp', temperature=0.0, dtype='gemini')
+            for data, res in zip(self.res_list, responses):
+                data['gemini_eval'] = ''.join(re.findall(r'[\u4e00-\u9fff]', res))
+            self.save()
+
+        if not all(['human_eval' in res for res in self.res_list]):
+            interface = FreeLabelInterface(
+                eval_inst_list=["Please type the major Chinese characters from top to down, from left to right in the given image. Leave empty if the there is no valid Chinese character in the given image."] * len(self.res_list),
+                data_list=self.res_list
+            )
+            interface.start()
+            for data, human_eval in zip(self.res_list, interface.eval_list):
+                data['human_eval'] = human_eval.lower().strip()
+            self.save()
 
     def calculate_metrics(self):
-        auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        label_list = [inst['text'] for inst in self.inst_list]
+        model_eval_list = [''.join(set(res['gpt_eval']).intersection(set(res['gemini_eval']))) for res in self.res_list]
+        human_eval_list = [res['human_eval'] for res in self.res_list]
+
+        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
 
 
 class IFormatBackground(EvalUnit):
@@ -535,11 +554,12 @@ class IFormatBackground(EvalUnit):
                 round(crop_area[3] * height)
             )
             cropped_image = data['image_list'][0].crop(crop_area)
-            data['auto_eval'] = color_condition_exact(cropped_image, inst['color'])
+            data['auto_eval'] = color_condition(cropped_image, inst['color'])
+        self.save()
 
     def calculate_metrics(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
 
 
 class IFormatSymmetric(EvalUnit):
@@ -548,17 +568,18 @@ class IFormatSymmetric(EvalUnit):
     def evaluate(self):
         for data, inst in zip(self.res_list, self.inst_list):
             data['auto_eval'] = symmetry_condition(data['image_list'][0], inst['symmetry_type'])
+        self.save()
 
     def calculate_metrics(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
 
 
 class IEdit(EvalUnit):
     inst_name = 'i_edit'
 
     def evaluate(self):
-        self.load_mm()
+        self.load_inst_mm()
         for data, inst in zip(self.res_list, self.inst_list):
             origin_image = inst['image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
@@ -570,16 +591,18 @@ class IEdit(EvalUnit):
                     )
             data['image_list'][0] = image.crop(bbox)
 
-            mask = np.ones(inst['image_list'][0].size, dtype=bool)
-            mask[bbox[1]: bbox[3], bbox[0]: bbox[2]] = False
-            diff = ImageChops.difference(image, origin_image)
-            data['auto_eval'] = (np.array(diff)[mask].mean(axis=-1) < 25.6).mean()
+            origin_arr = np.array(origin_image)
+            arr = np.array(image)
+            origin_arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
+            arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
+            data['auto_eval'] = calculate_ssim(arr, origin_arr)
+
         self.save()
         super().evaluate()
 
     def calculate_metrics(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
         super().calculate_metrics()
 
 
@@ -588,7 +611,7 @@ class IEditText(IEdit, IOCR):
 
     def calculate_metrics(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
         IOCR.calculate_metrics(self, ignore_null=False)
 
 
@@ -604,5 +627,163 @@ class IEditObjectModify(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_modify'
 
 
+class ASound(EvalUnit):
+    inst_name = 'a_sound'
+
+    @abstractmethod
+    def _evaluate(self):
+        pass
+
+    def evaluate(self):
+        audio_list, label_list, human_eval_res_list, idx_list = self._evaluate()
+
+        # CLAPScore audio-text
+        scores = compute_clapscore_at(audio_list, label_list)
+        for idx, data in enumerate(self.res_list):
+            data['clapscore_at'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        self.save()
+
+        # CLAPScore audio-audio
+        ref_audio_map = pd.read_csv('./datasets/ESC-50/dataset.csv')
+        scores = []
+        for audio, label in zip(audio_list, label_list):
+            file_list = ref_audio_map[ref_audio_map['category'] == label]['filename'].tolist()
+            ref_audio_list = []
+            for file_dir in file_list:
+                ref_audio, sr = librosa.load('./datasets/ESC-50/audio/' + file_dir)
+                if sr != SAMPLE_RATE:
+                    ref_audio = librosa.resample(ref_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
+                ref_audio_list.append(ref_audio)
+            scores.append(compute_clapscore_aa(audio, ref_audio_list))
+        for idx, data in enumerate(self.res_list):
+            data['clapscore_aa'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        self.save()
+
+        interface = MultiLabelInterface(
+            label_list=['Yes', 'No'],
+            eval_inst_list=[f"Is the given audio about {label}?" for label in label_list],
+            data_list=human_eval_res_list,
+            mm_type='a'
+        )
+        interface.start()
+        for idx, data in enumerate(self.res_list):
+            data['human_eval'] = [1.0 - float(interface.eval_list[i]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        self.save()
+
+        # # Beats score
+        # scores = audio_classification(audio_list, label_list)
+        # for idx, data in enumerate(self.res_list):
+        #     data['beats_score'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        # self.save()
+
+        # Gemini-2.0
+        query_list = [form_gemini_mm_query(f"Is the given audio the sound of {l}? Answer only yes or no.", audios=[a])
+                      for a, l in zip(audio_list, label_list)]
+        responses = batch(query_gemini, query_list, model='gemini-2.0-flash-exp', temperature=0.0, num_worker=1)
+        for idx, data in enumerate(self.res_list):
+            data['gemini_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        self.save()
+
+    def calculate_metrics(self, method='clapscore_aa', threshold=0.6):
+        model_eval_list = [res[method] for res in self.res_list]
+        human_eval_list = [res['human_eval'] for res in self.res_list]
+
+        # # Optimal threshold
+        # model_eval_cat = list(itertools.chain(*model_eval_list))
+        # human_eval_cat = list(itertools.chain(*human_eval_list))
+        # threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
+
+        model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
+        human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
+
+        print(f"Model evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
+        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
+        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
+        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+
+
+class ASoundBeginEnd(ASound):
+    inst_name = 'a_sound_begin_end'
+
+    def _evaluate(self):
+        audio_list = []
+        label_list = []
+        human_eval_res_list = []
+        idx_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            idx_list.append([])
+            if 'start' in inst:
+                audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 2])
+                label_list.append(inst['start'])
+                human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+                idx_list[-1].append(idx)
+                idx += 1
+            if 'end' in inst:
+                audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 2:])
+                label_list.append(inst['end'])
+                human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+                idx_list[-1].append(idx)
+                idx += 1
+        return audio_list, label_list, human_eval_res_list, idx_list
+
+
+class ASoundInclude(ASound):
+    inst_name = 'a_sound_include'
+
+    def _evaluate(self):
+        audio_list = []
+        label_list = []
+        human_eval_res_list = []
+        idx_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            begin = round(inst['range'][0] * len(data['audio_list'][0]))
+            end = round(inst['range'][1] * len(data['audio_list'][0]))
+            audio_list.append(data['audio_list'][0][begin: end])
+            label_list.append(inst['target'])
+            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+            idx_list.append([idx])
+            idx += 1
+        return audio_list, label_list, human_eval_res_list, idx_list
+
+
+class ASoundCoT(ASound):
+    inst_name = 'a_sound_cot'
+
+    def _evaluate(self):
+        return (
+            [data['audio_list'][0] for data in self.res_list],
+            [inst['target'] for inst in self.inst_list],
+            self.res_list,
+            [[i] for i in range(len(self.res_list))]
+        )
+
+
+class ASoundSilence(ASound):
+    inst_name = 'a_sound_silence'
+
+    def _evaluate(self):
+        audio_list = []
+        label_list = []
+        human_eval_res_list = []
+        idx_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            audio_segs = audio_segmentation(data['audio_list'][0])
+            if len(audio_segs) != 2:
+                idx_list.append([FAILED_TOKEN, FAILED_TOKEN])
+                continue
+            audio_list += audio_segs
+            label_list += [inst['start'], inst['end']]
+            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_segs[0]]})
+            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_segs[1]]})
+            idx_list.append([idx, idx + 1])
+            idx += 2
+        return audio_list, label_list, human_eval_res_list, idx_list
+
+
 if __name__ == '__main__':
-    pass
+    a = ASoundSilence(model_name='TangoFlux')
+    # a.evaluate()
+    a.calculate_metrics('clapscore_aa')

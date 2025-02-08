@@ -1,5 +1,5 @@
 {"instruction": "Generate an image of a kaleidoscopic fractal with repeating shapes. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
-{"instruction": "Generate an image of a futuristic cityscape. The image must be axisymmetric along the horizontal center line.", "symmetry_type": "horizontal"}
+{"instruction": "Generate an image of a futuristic cityscape. The image must be axisymmetric along the vertical center line.", "symmetry_type": "vertical"}
 {"instruction": "Generate an image of a cathedral's rose window. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
 {"instruction": "Generate an image of a mysterious hedge maze. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
 {"instruction": "Generate an image of a snowflake with delicate crystalline patterns. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
@@ -10,6 +10,6 @@
 {"instruction": "Generate an image of an ornate mosaic floor. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
 {"instruction": "Generate an image of a towering medieval fortress gate from a straight-on perspective. The image must be axisymmetric along the vertical center line.", "symmetry_type": "vertical"}
 {"instruction": "Generate an image of an elaborate clockwork mechanism with gears arranged in a circular pattern. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
-{"instruction": "Generate an image of a butterfly with its wings fully extended. The image must be axisymmetric along the vertical center line.", "symmetry_type": "vertical"}
+{"instruction": "Generate an image of a butterfly with its wings fully extended. The image must be axisymmetric along the horizontal center line.", "symmetry_type": "horizontal"}
 {"instruction": "Generate an image of a swirling cosmic formation resembling a galaxy. The image must be center-symmetrical around the center of the image.", "symmetry_type": "center"}
 {"instruction": "Generate an image of a grand library interior with tall bookshelves on both sides. The image must be axisymmetric along the vertical center line.", "symmetry_type": "vertical"}

@@ -3,6 +3,8 @@ import json
 import random
 from datasets import load_dataset
 from PIL import Image, ImageDraw
+import gradio as gr
+from gradio_image_prompter import ImagePrompter
 import matplotlib.pyplot as plt
 
 from interface import LabelBBoxInterface
@@ -109,4 +111,9 @@ def reindex_image_editing_instruction():
 
 
 if __name__ == '__main__':
-    pass
+    demo = gr.Interface(
+        lambda prompts: (prompts["image"], prompts["points"]),
+        ImagePrompter(show_label=False),
+        [gr.Image(show_label=False), gr.Dataframe(label="Points")],
+    )
+    demo.launch()

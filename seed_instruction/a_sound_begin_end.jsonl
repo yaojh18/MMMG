@@ -1,0 +1,20 @@
+{"instruction": "Generate an audio that starts with the sound of chainsaw.", "start": "chainsaw"}
+{"instruction": "Generate an audio that starts with the sound of fireworks.", "start": "fireworks"}
+{"instruction": "Generate an audio that starts with the sound of can opening.", "start": "can opening"}
+{"instruction": "Generate an audio that starts with the sound of laughing.", "start": "laughing"}
+{"instruction": "Generate an audio that starts with the sound of coughing.", "start": "coughing"}
+{"instruction": "Generate an audio that ends with the sound of toilet flush.", "end": "toilet flush"}
+{"instruction": "Generate an audio that ends with the sound of breathing.", "end": "breathing"}
+{"instruction": "Generate an audio that ends with the sound of church bells.", "end": "church bells"}
+{"instruction": "Generate an audio that ends with the sound of crow.", "end": "crow"}
+{"instruction": "Generate an audio that ends with the sound of frog.", "end": "frog"}
+{"instruction": "Generate an audio that starts with the sound of pig and ends with the sound of car horn.", "start": "pig", "end":  "car horn"}
+{"instruction": "Generate an audio that starts with the sound of cat and ends with the sound of clapping.", "start": "cat", "end":  "clapping"}
+{"instruction": "Generate an audio that starts with the sound of clock alarm and ends with the sound of coughing.", "start": "clock alarm", "end":  "coughing"}
+{"instruction": "Generate an audio that starts with the sound of dog and ends with the sound of fireworks.", "start": "dog", "end":  "fireworks"}
+{"instruction": "Generate an audio that starts with the sound of chirping birds and ends with the sound of mouse click.", "start": "chirping birds", "end":  "mouse click"}
+{"instruction": "Generate an audio that starts with the sound of keyboard typing and ends with the sound of rooster.", "start": "keyboard typing", "end":  "rooster"}
+{"instruction": "Generate an audio that starts with the sound of sea waves and ends with the sound of sneezing.", "start": "sea waves", "end":  "sneezing"}
+{"instruction": "Generate an audio that starts with the sound of snoring and ends with the sound of thunderstorm.", "start": "snoring", "end":  "thunderstorm"}
+{"instruction": "Generate an audio that starts with the sound of toilet flush and ends with the sound of footsteps.", "start": "toilet flush", "end":  "footsteps"}
+{"instruction": "Generate an audio that starts with the sound of airplane and ends with the sound of rain.", "start": "airplane", "end":  "rain"}

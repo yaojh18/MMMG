@@ -1,0 +1,20 @@
+{"instruction": "Generate an image of a bright blue banana with large yellow polka dots.", "object": "a blue banana with dots on it exclusively being yellow and no other part being yellow"}
+{"instruction": "Generate an image of a red giraffe with green stripes.", "object": "a red giraffe with stripes (not blocks) on it exclusively being green and no other part being green"}
+{"instruction": "Generate an image of an orange elephant with purple polka dots.", "object": "an orange elephant with dots on it exclusively being purple and no other part being purple"}
+{"instruction": "Generate an image of a bright pink pear with a pattern of yellow stars.", "object": "a pink pear with stars on it exclusively being yellow and no other part being yellow"}
+{"instruction": "Generate an image of a chessboard with rainbow-colored squares.", "object": "a rainbow chessboard with chess"}
+{"instruction": "Generate an image of a table with exactly 6 legs.", "object": "a table with exactly 6 undistorted and clearly visible legs"}
+{"instruction": "Generate an image of a chair with 5 legs.", "object": "a chair with exactly 5 undistorted and clearly visible legs"}
+{"instruction": "Generate an image of a bicycle with triangular wheels.", "object": "a bicycle with two triangular-shaped wheels"}
+{"instruction": "Generate an image of a bicycle with a square front wheel and a circular rear wheel.", "object": "a bicycle with a square front wheel and a circular rear wheel"}
+{"instruction": "Generate an image of a miniature city built on a giant pizza slice.", "object": "a miniature city on a giant pizza slice (not a full pizza)"}
+{"instruction": "Generate an image of a laptop with a keyboard made of piano keys.", "object": "a laptop with piano key keyboard and without a computer keyboard"}
+{"instruction": "Generate an image of a tree growing from sky to the earth.", "object": "a upside-down tree (roots pointing upward and its leaves pointing downward) with the sky up and the earth down"}
+{"instruction": "Generate an image of a paper shark swimming in the red snow and a blue sun on the sky.", "object": ["a paper shark swimming in the red snow", "a blue sun on the sky"]}
+{"instruction": "Generate an image of a hat made of fresh leaves and a carrot wearing a tiny pair of glasses.", "object": ["a hat made of leaves (not cloth)", "a carrot wearing a pair of glasses"]}
+{"instruction": "Generate an image of a car that looks like a giant shoe and a turtle with a functioning clock for a shell.", "object": ["a shoe-shaped car", "a turtle with a functioning clock for a shell"]}
+{"instruction": "Generate an image of a pineapple with silver metallic skin and a cactus shaped like a heart.", "object": ["a silver metallic pineapple", "a heart-shaped cactus"]}
+{"instruction": "Generate an image of a crystal guitar and a television set made of wood and covered in moss.", "object": ["a crystal guitar", "a wooden TV covered in moss"]}
+{"instruction": "Generate an image of a glass violin and a coffee mug with an actual tree branch as the handle.", "object": ["a glass violin", "a coffee mug with a tree branch handle"]}
+{"instruction": "Generate an image of a translucent jelly backpack and a pear covered in fluffy pink fur.", "object": ["a translucent jelly backpack", "a pear covered in fluffy pink fur"]}
+{"instruction": "Generate an image of a coffee cup with marbling patterns and a cactus wearing a pair of glasses.", "object": ["a coffee cup with marbling patterns", "a cactus wearing a pair of glasses"]}

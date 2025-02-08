@@ -28,9 +28,10 @@ class Interface:
 
 
 class MultiLabelInterface(Interface):
-    def __init__(self, label_list, eval_inst_list, **kwargs):
+    def __init__(self, label_list, eval_inst_list, mm_type='i', **kwargs):
         self.label_list = label_list
         self.eval_inst_list = eval_inst_list
+        self.mm_type = mm_type
         self.eval_list = [None] * len(self.eval_inst_list)
         super().__init__(**kwargs)
 
@@ -42,13 +43,21 @@ class MultiLabelInterface(Interface):
                 label="Instruction",
                 interactive=False
             )
-            res_image = gr.Image(
-                value=self.data_list[0]['image_list'][0],
-                visible=True,
-                label="Response",
-                width=400,
-                height=400
-            )
+            if self.mm_type == 'i':
+                mm_com = gr.Image(
+                    value=self.data_list[0]['image_list'][0],
+                    visible=True,
+                    label="Response",
+                    width=400,
+                    height=400
+                )
+            else:
+                mm_com = gr.Audio(
+                    value=(SAMPLE_RATE, self.data_list[0]['audio_list'][0]),
+                    visible=True,
+                    label="Response",
+                    type="numpy"
+                )
             eval_textbox = gr.Textbox(
                 value=self.eval_inst_list[0],
                 label="Evaluation",
@@ -64,12 +73,12 @@ class MultiLabelInterface(Interface):
             next_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(1), judgement_choice],
-                outputs=[current_index, inst_textbox, res_image, eval_textbox, judgement_choice, prev_button, next_button]
+                outputs=[current_index, inst_textbox, mm_com, eval_textbox, judgement_choice, prev_button, next_button]
             )
             prev_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(-1), judgement_choice],
-                outputs=[current_index, inst_textbox, res_image, eval_textbox, judgement_choice, prev_button, next_button]
+                outputs=[current_index, inst_textbox, mm_com, eval_textbox, judgement_choice, prev_button, next_button]
             )
 
             def update_buttons_state(judgement):
@@ -92,7 +101,7 @@ class MultiLabelInterface(Interface):
         return (
             current_index,
             self.data_list[current_index]['query'],
-            self.data_list[current_index]['image_list'][0],
+            self.data_list[current_index]['image_list'][0] if self.mm_type == 'i' else (SAMPLE_RATE, self.data_list[current_index]['audio_list'][0]),
             self.eval_inst_list[current_index],
             None,
             gr.update(visible=(current_index - 1) >= 0),

@@ -1,7 +1,7 @@
 import random
-
-from OmniGen import OmniGenPipeline
 from abc import abstractmethod
+
+import torch
 
 from utils import *
 
@@ -44,14 +44,16 @@ class Dalle3(Model):
 
 
 class OmniGen(Model):
+    model_name = 'omnigen'
+
     def __init__(self):
         super().__init__()
+        from OmniGen import OmniGenPipeline
         self.batch_size = 16
         self.sample_size = 4
         self.pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1")
 
     def generate(self, query_list):
-        random.seed(0)
         text_list = ['<img><|image_1|></img>' + query['instruction'] for query in query_list]
         image_list = [query['image_list'] for query in query_list]
         output_list = []
@@ -62,8 +64,9 @@ class OmniGen(Model):
                 input_images=image_list[begin: end],
                 height=512,
                 width=512,
-                seed=random.randint(0, 1000),
+                seed=0,
             )
+
         res_list = []
         for query, output in zip(query_list, output_list):
             res_list.append({
@@ -71,5 +74,26 @@ class OmniGen(Model):
                 'response': IMAGE_TOKEN(0),
                 'image_list': [output],
                 'audio_list': []
+            })
+        return res_list
+
+
+class TangoFlux(Model):
+    model_name = 'tango-flux'
+
+    def __init__(self):
+        super().__init__()
+        from tangoflux import TangoFluxInference
+        self.model = TangoFluxInference(name='declare-lab/TangoFlux')
+
+    def generate(self, query_list):
+        res_list = []
+        random.seed(0)
+        for query in query_list:
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [self.model.generate(query, steps=50, duration=5, seed=random.randint(0, 1000))],
             })
         return res_list
