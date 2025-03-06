@@ -1,0 +1,10 @@
+{"instruction": "Generate a peaceful ambient track that fades in at the beginning.", "intensity": ["start", "fade in"]}
+{"instruction": "Generate a soft piano melody that that gradually winds down at the beginning.", "intensity": ["start", "fade out"]}
+{"instruction": "Generate an energetic EDM track that gradually builds up towards the end.", "intensity": ["end", "fade in"]}
+{"instruction": "Generate a cinematic orchestral piece that fades out towards the end.", "intensity": ["end", "fade out"]}
+{"instruction": "Generate a dreamy synthwave track that crescendos at the beginning.", "intensity": ["start", "fade in"]}
+{"instruction": "Generate a gentle acoustic ballad that decrescendos at the beginning.", "intensity": ["start", "fade out"]}
+{"instruction": "Generate an uplifting orchestral score that crescendos towards the end.", "intensity": ["end", "fade in"]}
+{"instruction": "Generate a pulsating techno track that decrescendos towards the end.", "intensity": ["end", "fade out"]}
+{"instruction": "Generate a soft jazz composition that gradually increases intensity at the beginning.", "intensity": ["start", "fade in"]}
+{"instruction": "Generate a melancholic electronic tune that decreases intensity towards the end.", "intensity": ["end", "fade out"]}

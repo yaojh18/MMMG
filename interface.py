@@ -1,4 +1,5 @@
 import threading
+import random
 import gradio as gr
 from gradio_image_prompter import ImagePrompter
 from gradio_image_prompter.image_prompter import PromptValue
@@ -22,27 +23,39 @@ class Interface:
     def construct_interface(self):
         pass
 
-    @abstractmethod
     def update_interface(self):
         pass
 
 
 class MultiLabelInterface(Interface):
-    def __init__(self, label_list, eval_inst_list, mm_type='i', **kwargs):
+    def __init__(self, label_list, eval_inst_list, mm_type='i',
+                 ref_list=None, back_list=None, shuffle=False, multi_choice=False, **kwargs):
         self.label_list = label_list
         self.eval_inst_list = eval_inst_list
         self.mm_type = mm_type
-        self.eval_list = [None] * len(self.eval_inst_list)
+        self.ref_list = ref_list
+        self.back_list = back_list
+        self.shuffle = shuffle
+        self.multi_choice = multi_choice
+        self.eval_list = [FAILED_TOKEN] * len(self.eval_inst_list)
         super().__init__(**kwargs)
 
     def construct_interface(self):
-        with gr.Blocks() as interface:
+        if self.shuffle:
+            self.idx_list = random.sample(range(len(self.data_list)), len(self.data_list))
+        else:
+            self.idx_list = list(range(len(self.data_list)))
+        self.eval_inst_list = [self.eval_inst_list[i] for i in self.idx_list]
+        self.data_list = [self.data_list[i] for i in self.idx_list]
+        if self.ref_list is not None:
+            self.ref_list = [self.ref_list[i] for i in self.idx_list]
+        with (gr.Blocks() as interface):
+            if self.back_list is not None:
+                for back in self.back_list:
+                    with gr.Accordion(back[0] + ' examples', open=False):
+                        for audio in back[1:]:
+                            gr.Audio(value=audio, type="filepath")
             current_index = gr.State(0)
-            inst_textbox = gr.Textbox(
-                value=self.data_list[0]['query'],
-                label="Instruction",
-                interactive=False
-            )
             if self.mm_type == 'i':
                 mm_com = gr.Image(
                     value=self.data_list[0]['image_list'][0],
@@ -58,31 +71,56 @@ class MultiLabelInterface(Interface):
                     label="Response",
                     type="numpy"
                 )
+            if self.ref_list is not None:
+                if self.mm_type == 'i':
+                    mm_ref_com = gr.Image(
+                        value=self.ref_list[0],
+                        visible=True,
+                        label="Reference",
+                        width=400,
+                        height=400
+                    )
+                else:
+                    mm_ref_com = gr.Audio(
+                        value=(SAMPLE_RATE, self.ref_list[0]),
+                        visible=True,
+                        label="Reference",
+                        type="numpy"
+                    )
             eval_textbox = gr.Textbox(
                 value=self.eval_inst_list[0],
                 label="Evaluation",
                 interactive=False
             )
-            judgement_choice = gr.Radio(
-                choices=self.label_list,
-                label="Judgement"
-            )
+            if self.multi_choice:
+                judgement_choice = gr.CheckboxGroup(
+                    choices=self.label_list,
+                    label="Judgement"
+                )
+            else:
+                judgement_choice = gr.Radio(
+                    choices=self.label_list,
+                    label="Judgement"
+                )
             with gr.Row():
                 next_button = gr.Button("Next", interactive=False)
                 prev_button = gr.Button("Prev", visible=False, interactive=False)
             next_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(1), judgement_choice],
-                outputs=[current_index, inst_textbox, mm_com, eval_textbox, judgement_choice, prev_button, next_button]
+                outputs=[current_index, mm_com, eval_textbox, judgement_choice, prev_button, next_button]
+                        + ([] if self.ref_list is None else [mm_ref_com])
             )
             prev_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(-1), judgement_choice],
-                outputs=[current_index, inst_textbox, mm_com, eval_textbox, judgement_choice, prev_button, next_button]
+                outputs=[current_index, mm_com, eval_textbox, judgement_choice, prev_button, next_button]
+                        + ([] if self.ref_list is None else [mm_ref_com])
             )
 
             def update_buttons_state(judgement):
-                return gr.update(interactive=(judgement is not None)), gr.update(interactive=(judgement is not None))
+                return (gr.update(interactive=(judgement is not None and len(judgement) > 0)),
+                        gr.update(interactive=(judgement is not None and len(judgement) > 0)))
 
             judgement_choice.change(
                 update_buttons_state,
@@ -92,37 +130,35 @@ class MultiLabelInterface(Interface):
             return interface
 
     def update_interface(self, current_index, step, judgement):
-        self.eval_list[current_index] = self.label_list.index(judgement)
+        if self.multi_choice:
+            self.eval_list[current_index] = [self.label_list.index(j) for j in judgement]
+        else:
+            self.eval_list[current_index] = self.label_list.index(judgement)
         current_index += step
         if current_index == len(self.data_list):
+            self.eval_list = [self.eval_list[self.idx_list.index(i)] for i in range(len(self.eval_inst_list))]
             self.is_finished.set()
             current_index -= 1
 
-        return (
+        return [
             current_index,
-            self.data_list[current_index]['query'],
             self.data_list[current_index]['image_list'][0] if self.mm_type == 'i' else (SAMPLE_RATE, self.data_list[current_index]['audio_list'][0]),
             self.eval_inst_list[current_index],
             None,
             gr.update(visible=(current_index - 1) >= 0),
             gr.update(visible=(current_index + 1) <= len(self.data_list))
-        )
+        ] + ([] if self.ref_list is None else [self.ref_list[current_index] if self.mm_type == 'i' else (SAMPLE_RATE, self.ref_list[current_index])])
 
 
 class FreeLabelInterface(Interface):
     def __init__(self, eval_inst_list, **kwargs):
         self.eval_inst_list = eval_inst_list
-        self.eval_list = [None] * len(self.eval_inst_list)
+        self.eval_list = [FAILED_TOKEN] * len(self.eval_inst_list)
         super().__init__(**kwargs)
 
     def construct_interface(self):
         with gr.Blocks() as interface:
             current_index = gr.State(0)
-            inst_textbox = gr.Textbox(
-                value=self.data_list[0]['query'],
-                label="Instruction",
-                interactive=False
-            )
             res_image = gr.Image(
                 value=self.data_list[0]['image_list'][0],
                 visible=True,
@@ -146,12 +182,12 @@ class FreeLabelInterface(Interface):
             next_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(1), judgement_input],
-                outputs=[current_index, inst_textbox, res_image, eval_textbox, judgement_input, prev_button, next_button]
+                outputs=[current_index, res_image, eval_textbox, judgement_input, prev_button, next_button]
             )
             prev_button.click(
                 self.update_interface,
                 inputs=[current_index, gr.State(-1), judgement_input],
-                outputs=[current_index, inst_textbox, res_image, eval_textbox, judgement_input, prev_button, next_button]
+                outputs=[current_index, res_image, eval_textbox, judgement_input, prev_button, next_button]
             )
             return interface
 
@@ -164,7 +200,6 @@ class FreeLabelInterface(Interface):
 
         return (
             current_index,
-            self.data_list[current_index]['query'],
             self.data_list[current_index]['image_list'][0],
             self.eval_inst_list[current_index],
             "",
@@ -176,7 +211,7 @@ class FreeLabelInterface(Interface):
 class LabelBBoxInterface(Interface):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.res_list = [None] * len(self.data_list)
+        self.res_list = [FAILED_TOKEN] * len(self.data_list)
 
     def construct_interface(self):
         with gr.Blocks() as interface:
@@ -240,3 +275,41 @@ class LabelBBoxInterface(Interface):
             gr.update(visible=(current_index - 1) >= 0),
             gr.update(visible=(current_index + 1) <= len(self.data_list))
         )
+
+
+class CalibratedLabelInterface(Interface):
+    def __init__(self, label_list, eval_inst, **kwargs):
+        self.label_list = label_list
+        self.eval_inst = eval_inst
+        super().__init__(**kwargs)
+        self.eval_list = [FAILED_TOKEN] * len(self.data_list)
+
+    def construct_interface(self):
+        with gr.Blocks() as interface:
+            audios = []
+            radios = []
+            instruction = gr.Textbox(label='Instruction', value=self.eval_inst)
+            for idx, data in enumerate(self.data_list):
+                with gr.Row():
+                    audios.append(gr.Audio(
+                        value=(SAMPLE_RATE, data),
+                        label=f'audio_{idx}',
+                        type="numpy"
+                    ))
+                    radio = gr.Radio(
+                        choices=self.label_list,
+                        label=f'radio_{idx}'
+                    )
+                    radio.change(self.label, inputs=[gr.State(idx), radio], outputs=[])
+                    radios.append(radio)
+            message = gr.Textbox(label='Message', value='Successfully submitted!', visible=False)
+            submit_button = gr.Button("Submit")
+            submit_button.click(self.submit, inputs=[], outputs=[message])
+            return interface
+
+    def label(self, i, j):
+        self.eval_list[i] = self.label_list.index(j)
+
+    def submit(self):
+        self.is_finished.set()
+        return gr.update(visible=True)

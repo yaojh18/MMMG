@@ -5,15 +5,13 @@ import requests
 import collections
 import re
 import librosa
+import evaluate
 import numpy as np
 import soundfile as sf
 import pandas as pd
 import matplotlib.pyplot as plt
-import google.generativeai as genai
 import torch
 import torch.nn.functional as F
-from pydub import AudioSegment
-from pydub.silence import detect_silence
 from tqdm import tqdm
 from PIL import Image
 from io import BytesIO
@@ -22,7 +20,8 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
 from sklearn.metrics import cohen_kappa_score
-from transformers import AutoProcessor, ClapModel
+from transformers import AutoProcessor, ClapModel, AutoModelForSpeechSeq2Seq, Wav2Vec2FeatureExtractor, WavLMForXVector
+
 
 OPENAI_KEY = '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'
 GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
@@ -72,57 +71,6 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
     return buffer.getvalue()
 
 
-def generate_image_from_openai(index, prompt, model="dall-e-3"):
-    client = openai.OpenAI(api_key=OPENAI_KEY)
-    retry_count = 2
-    retry_interval = 1
-
-    for _ in range(retry_count):
-        try:
-            response = client.images.generate(
-                model=model,
-                prompt=prompt,
-            )
-            img_url = response.data[0].url
-            img_res = requests.get(img_url)
-            if img_res.status_code == 200:
-                image = BytesIO(img_res.content)
-                image = Image.open(image)
-                return index, image
-            else:
-                raise ConnectionError
-
-        except Exception as e:
-            print("Error info: ", e)
-            print('Retrying....')
-            retry_interval *= 2
-            time.sleep(retry_interval)
-    print('Fail to get response.')
-    return index, None
-
-
-def speech_to_text_from_openai(index, audio):
-    client = openai.OpenAI(api_key=OPENAI_KEY)
-    retry_count = 2
-    retry_interval = 1
-
-    for _ in range(retry_count):
-        try:
-            transcription = client.audio.translations.create(
-                model="whisper-1",
-                file=encode_audio(audio, return_file=True),
-            )
-            return index, transcription.text
-
-        except Exception as e:
-            print("Error info: ", e)
-            print('Retrying....')
-            retry_interval *= 2
-            time.sleep(retry_interval)
-    print('Fail to get response.')
-    return index, ''
-
-
 def form_openai_mm_query(text, images=(), audios=()):
     texts = re.split(r'<(?:image|audio)_start><(?:image|audio)_\d+><(?:image|audio)_end>', text)
     modalities = re.findall(r'<((?:image|audio)_\d+)>', text)
@@ -160,7 +108,7 @@ def form_gemini_mm_query(text, images=(), audios=()):
         message.append({
             "mime_type": "audio/wav",
             "data": encode_audio(audio, decode=False)
-    })
+        })
     return message
 
 
@@ -198,6 +146,7 @@ def query_openai(index, prompt, model, temperature, dtype='gpt'):
 
 
 def query_gemini(index, query, model, temperature):
+    import google.generativeai as genai
     genai.configure(api_key=GEMINI_KEY)
     model = genai.GenerativeModel(model_name=model, generation_config=genai.GenerationConfig(temperature=temperature, top_p=1.0))
     retry_count = 10
@@ -216,26 +165,6 @@ def query_gemini(index, query, model, temperature):
     return index, ''
 
 
-def calculate_f1(text1, text2):
-    tokens1 = text1.split(' ')
-    tokens2 = text2.split(' ')
-    counter1 = Counter(tokens1)
-    counter2 = Counter(tokens2)
-
-    overlap = sum((counter1 & counter2).values())
-    precision = overlap / sum(counter2.values()) if counter2 else 0
-    recall = overlap / sum(counter1.values()) if counter1 else 0
-    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-    return f1
-
-
-def calculate_psnr(img1, img2):
-    img1 = np.array(img1)
-    img2 = np.array(img2)
-    mse = np.mean((img1 - img2) ** 2)
-    return 20 * np.log10(255.0 / np.sqrt(mse))
-
-
 def calculate_ssim(img1, img2):
     img1 = np.array(img1)
     img2 = np.array(img2)
@@ -249,10 +178,14 @@ def calculate_kappa(list1, list2):
 
 
 def calculate_pearson(list1, list2):
-    if list1 == list2:
+    list1 = np.array(list1)
+    list2 = np.array(list2)
+    if all(list1 == list2):
         return 1.0
-    if np.all(np.array(list1) == 0) or np.all(np.array(list2) == 0):
-        return 0.0
+    if np.std(list1) == 0:
+        list1 += np.random.normal(0, 1e-8, list1.shape)
+    if np.std(list2) == 0:
+        list2 += np.random.normal(0, 1e-8, list2.shape)
     return np.corrcoef(list1, list2)[0, 1]
 
 
@@ -291,86 +224,15 @@ def symmetry_condition(image: Image.Image, condition: str):
     return calculate_ssim(image, ref_image)
 
 
-def object_segmentation(image_path):
-    from mmdet.apis import init_detector, inference_detector
-    config_file = '../mmdetection/configs/mask2former/mask2former_swin-s-p4-w7-224_8xb2-lsj-50e_coco.py'
-    checkpoint_file = '../mmdetection/checkpoints/mask2former_swin-s-p4-w7-224_8xb2-lsj-50e_coco_20220504_001756-c9d0c4f2.pth'
-    with open('./data/object_names.txt', 'r') as cls_file:
-        classnames = [line.strip() for line in cls_file]
-    confidence_threshold = 0.3
-    detected = []
-    model = init_detector(config_file, checkpoint_file, device='cuda:0')
-    result = inference_detector(model, image_path).pred_instances
-    scores, labels, bboxes = result.scores, result.labels, result.bboxes
-    detected_labels = labels[scores >= confidence_threshold]
-    detected_bboxes = bboxes[scores >= confidence_threshold]
-    for label, bbox in zip(detected_labels, detected_bboxes):
-        detected.append((classnames[label], bbox))
-    return detected
-
-
-def generate_ocr_from_gcd(index: int, image: Image.Image, language='zh'):
-    """
-    Make sure you set confidential first.
-    pip install google-cloud-vision
-    gcloud init
-    gcloud auth application-default login
-    """
-    from google.cloud import vision
-    image_bytes = BytesIO()
-    image.save(image_bytes, format='png')
-    image = vision.Image(content=image_bytes.getvalue())
-
-    client = vision.ImageAnnotatorClient()
-    retry_count = 2
-    retry_interval = 10
-
-    for _ in range(retry_count):
-        try:
-            response = client.text_detection(image=image, image_context={"language_hints": [language]}, )
-            if response.error.message:
-                raise Exception(response.error.message)
-            results = []
-            for text in response.text_annotations:
-                vertices = [(vertex.x, vertex.y) for vertex in text.bounding_poly.vertices]
-                results.append({"text": text.description, "box": vertices})
-            return index, results
-        except Exception as e:
-            print("Error info: ", e)
-            print('Retrying....')
-            retry_count += 1
-            retry_interval *= 2
-            time.sleep(retry_interval)
-    print('Fail to get response.')
-    return index, []
-
-
 def compute_clapscore_at(audio_list, text_list):
     with torch.no_grad():
         audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000) for audio in audio_list]
-        model = ClapModel.from_pretrained("laion/clap-htsat-unfused")
+        model = ClapModel.from_pretrained("laion/clap-htsat-unfused").to('cuda')
         processor = AutoProcessor.from_pretrained("laion/clap-htsat-unfused")
-        inputs = processor(text=text_list, audios=audio_list, return_tensors="pt", padding=True, sampling_rate=48000)
+        inputs = processor(text=text_list, audios=audio_list, return_tensors="pt", padding=True, sampling_rate=48000).to('cuda')
         outputs = model(**inputs)
         cos_sim = F.cosine_similarity(outputs.audio_embeds, outputs.text_embeds)
         return cos_sim.tolist()
-
-
-def find_optimal_threshold(pred_list, label_list):
-    best_threshold = 0.0
-    best_accuracy = 0.0
-    best_predictions = None
-
-    for threshold in np.linspace(0, 0.99, 100):
-        predictions = (pred_list > threshold).astype(int)
-        accuracy = (predictions == label_list).mean()
-        if accuracy >= best_accuracy:
-            best_accuracy = accuracy
-            best_threshold = threshold
-            best_predictions = predictions
-    print('Best threshold: ', best_threshold)
-
-    return best_threshold
 
 
 def compute_clapscore_aa(audio, ref_audio_list):
@@ -378,30 +240,59 @@ def compute_clapscore_aa(audio, ref_audio_list):
         audio = librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000)
         ref_audio_list = [librosa.resample(ref_audio, orig_sr=SAMPLE_RATE, target_sr=48000) for ref_audio in ref_audio_list]
         ref_audio_list.append(audio)
-        model = ClapModel.from_pretrained("laion/clap-htsat-unfused")
+        model = ClapModel.from_pretrained("laion/clap-htsat-unfused").to('cuda')
         processor = AutoProcessor.from_pretrained("laion/clap-htsat-unfused")
-        audio_inputs = processor(audios=ref_audio_list, sampling_rate=48000, return_tensors="pt", padding=True)
+        audio_inputs = processor(audios=ref_audio_list, sampling_rate=48000, return_tensors="pt", padding=True).to('cuda')
         audio_embeddings = model.get_audio_features(**audio_inputs)
         cos_sim = F.cosine_similarity(audio_embeddings[-1], audio_embeddings[:-1])
-        return float(cos_sim.topk(10)[0].mean())
+        cos_sim, topk = cos_sim.topk(10)
+        # print(topk, cos_sim.mean())
+        return float(cos_sim.mean())
 
 
-def audio_classification(audio_list, label_list):
-    from models.beats.BEATs import BEATs, BEATsConfig
-    checkpoint = torch.load('./models/beats/checkpoints/BEATs_iter3_plus_AS2M_finetuned_on_AS2M_cpt1.pt')
-    pred_map = pd.read_csv('./datasets/ESC-50/class_labels_indices.csv')
-    pred_map.set_index('display_name', inplace=True)
-    inverted_label_dict = {v: k for k, v in checkpoint['label_dict'].items()}
-    label_list = pred_map.loc[label_list]['mid'].tolist()
-    label_list = torch.tensor([inverted_label_dict[label] for label in label_list])
-    with torch.no_grad():
-        cfg = BEATsConfig(checkpoint['cfg'])
-        BEATs_model = BEATs(cfg)
-        BEATs_model.load_state_dict(checkpoint['model'])
-        BEATs_model.eval()
-        probs = BEATs_model.extract_features(torch.tensor(audio_list))[0]
-        predictions = probs.gather(dim=-1, index=label_list.unsqueeze(1)).squeeze(1).tolist()
-        return predictions
+def find_optimal_threshold(pred_list, label_list):
+    best_threshold = 0.0
+    best_accuracy = 0.0
+    for threshold in np.linspace(min(pred_list) - 0.1, max(pred_list) + 0.1, 100):
+        predictions = (pred_list > threshold).astype(int)
+        accuracy = (predictions == label_list).mean()
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_threshold = threshold
+    print('Best threshold: ', best_threshold)
+
+    return best_threshold
+
+
+def find_optimal_thresholds(pred_list, label_list):
+    best_low_threshold = 0.0
+    best_high_threshold = 1.0
+    best_accuracy = 0.0
+    min_gap = max(pred_list) - min(pred_list) + 0.2
+    print(min(pred_list), max(pred_list))
+    low_thresholds = np.linspace(min(pred_list) - 0.1, max(pred_list), 100)
+    high_thresholds = np.linspace(min(pred_list), max(pred_list) + 0.1, 100)
+
+    for low_threshold in low_thresholds:
+        for high_threshold in high_thresholds:
+            if low_threshold >= high_threshold:
+                continue
+
+            predictions = np.zeros_like(pred_list)
+            predictions[pred_list > high_threshold] = 2
+            predictions[(pred_list >= low_threshold) & (pred_list <= high_threshold)] = 1
+
+            accuracy = (predictions == label_list).mean()
+            gap = high_threshold - low_threshold
+            if accuracy >= best_accuracy or accuracy == best_accuracy and gap < min_gap:
+                best_accuracy = accuracy
+                min_gap = gap
+                best_low_threshold = low_threshold
+                best_high_threshold = high_threshold
+
+    print(f'Best low threshold: {best_low_threshold}, Best high threshold: {best_high_threshold}')
+
+    return best_low_threshold, best_high_threshold
 
 
 def audio_segmentation(audio, top_db=60, min_duration=1.0):
@@ -417,3 +308,134 @@ def audio_segmentation(audio, top_db=60, min_duration=1.0):
     if previous_end < non_silent_intervals[-1][1]:
         segments.append(audio[previous_end:])
     return segments
+
+
+def transcribe_speech(audio_list, text_list=None, language='english'):
+    processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
+    model = AutoModelForSpeechSeq2Seq.from_pretrained("BELLE-2/Belle-whisper-large-v3-zh" if language == 'chinese' else "openai/whisper-large-v3")
+    wer = evaluate.load('cer') if language == 'chinese' else evaluate.load('wer')
+    trans_list = []
+    wer_list = []
+    if text_list is None:
+        text_list = [None] * len(audio_list)
+
+    for audio, text in zip(audio_list, text_list):
+        audio = librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=16000)
+        input_features = processor(audio, sampling_rate=16000, return_tensors="pt", language=language).input_features
+        with torch.no_grad():
+            predicted_ids = model.generate(input_features, language=language)[0]
+            transcription = processor.decode(predicted_ids, language=language)
+        transcription = processor.tokenizer._normalize(transcription)
+        trans_list.append(transcription)
+        if text is not None:
+            text = processor.tokenizer._normalize(text)
+            if language == 'chinese':
+                text = text.replace(' ', '')
+            wer_list.append(1.0 - wer.compute(references=[text], predictions=[transcription]))
+    return trans_list, wer_list
+
+
+def calculate_pitch_and_speed(audio, gender, transcript, inst, language='english'):
+    import parselmouth
+
+    def extract_pitch(audio, hop_size=256, f0_min=80, f0_max=600, num_bins=100):
+        pitch_obj = parselmouth.Sound(audio, SAMPLE_RATE).to_pitch(
+            time_step=hop_size / SAMPLE_RATE,
+            pitch_floor=f0_min,
+            pitch_ceiling=f0_max,
+        )
+        pitch_values = pitch_obj.selected_array['frequency']
+        if language == 'chinese':
+            return float(np.median(pitch_values[pitch_values != 0]))
+        pitch_times = pitch_obj.xs()
+        intensity_obj = parselmouth.Sound(audio, SAMPLE_RATE).to_intensity(
+            time_step=hop_size / SAMPLE_RATE, minimum_pitch=f0_min
+        )
+        intensity_values = intensity_obj.values.flatten()
+        intensity_times = intensity_obj.xs()
+
+        if len(pitch_times) != len(intensity_times):
+            intensity_values = np.interp(pitch_times, intensity_times, intensity_values)
+        voiced_mask = pitch_values > 0.0
+        pitch_values = pitch_values[voiced_mask]
+        intensity_values = intensity_values[voiced_mask]
+
+        bins = np.linspace(min(pitch_values) - 0.1, max(pitch_values) + 0.1, num=num_bins)
+        bin_indices = np.digitize(pitch_values, bins)
+        cumulative_intensity = np.zeros(num_bins)
+        for idx, val in zip(bin_indices, intensity_values):
+            cumulative_intensity[idx] += val
+        best_bin = np.argmax(cumulative_intensity)
+        best_mask = (bin_indices == best_bin)
+        main_pitch = np.sum(pitch_values[best_mask] * intensity_values[best_mask]) / np.sum(intensity_values[best_mask])
+        return main_pitch
+
+    pitch_ms, pitch_fs, speed_s = FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN
+    pitch = extract_pitch(audio)
+    speed = ((len(transcript.split(' ')) if language == 'english' else len(transcript))
+             * SAMPLE_RATE * 60 / len(librosa.effects.trim(audio)[0]))
+
+    if 'pitch' in inst:
+        if gender == 0:
+            pitch_ms = float((pitch < 123.0) and (inst['pitch'] == 'low') or (pitch > 92.0) and (inst['pitch'] == 'high'))
+        elif gender == 1:
+            pitch_fs = float((pitch < 195.0) and (inst['pitch'] == 'low') or (pitch > 163.0) and (inst['pitch'] == 'high'))
+    if 'speed' in inst:
+        speed_s = float((speed > 168) ^ (inst['speed'] == 'low')) if language == 'english' \
+            else float((speed > 252) ^ (inst['speed'] == 'low'))
+    return (pitch, pitch, speed), (pitch_ms, pitch_fs, speed_s)
+
+
+def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
+    feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained('microsoft/wavlm-base-sv')
+    model = WavLMForXVector.from_pretrained('microsoft/wavlm-base-sv').to('cuda')
+    audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=16000) for audio in audio_list]
+    ref_audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=16000) for audio in ref_audio_list]
+    with torch.no_grad():
+        embeddings = []
+        for i in range(0, len(audio_list), batch_size):
+            inputs = feature_extractor(audio_list[i: min(i + batch_size, len(audio_list))],
+                                       return_tensors="pt", padding=True, sampling_rate=16000).to('cuda')
+            embeddings.append(model(**inputs).embeddings)
+        embeddings = torch.cat(embeddings, dim=0)
+        ref_embeddings = []
+        for i in range(0, len(ref_audio_list), batch_size):
+            ref_inputs = feature_extractor(ref_audio_list[i: min(i + batch_size, len(ref_audio_list))],
+                                           return_tensors="pt", padding=True, sampling_rate=16000).to('cuda')
+            ref_embeddings.append(model(**ref_inputs).embeddings)
+        ref_embeddings = torch.cat(ref_embeddings, dim=0)
+        cos_sim = F.cosine_similarity(embeddings, ref_embeddings)
+    return cos_sim.tolist()
+
+
+def text_instruction_following_verify(text_list, instruction_list):
+    """
+    The instruction list should have two parameters, instruction_type and instruction_params.
+    The return will be a list of {0, 1}s representing the instruction following result for each.
+    TODO: more will come in the future, only speech-compatible ones are included.
+    """
+    from nltk.tokenize import word_tokenize
+    output_list = []
+    processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
+    for text, inst in zip(text_list, instruction_list):
+        text = text.lower().strip()
+        if inst[0] == 'exact_match':
+            output_list.append(float(text == processor.tokenizer._normalize(inst[1])))
+        elif inst[0] == 'keyword_include':
+            output_list.append(float(all(keyword in text for keyword in inst[1:])))
+        elif inst[0] == 'keyword_exclude':
+            output_list.append(1.0 - float(any(keyword in text for keyword in inst[1:])))
+        elif inst[0] == 'keyword_count':
+            count = len(re.findall(re.escape(inst[1]), text))
+            output_list.append(eval(f'float(count {inst[2]})'))
+        elif inst[0] == 'length_word':
+            words = word_tokenize(text)
+            count = len([word for word in words if word.isalnum() or "'" in word])
+            output_list.append(eval(f'float(count {inst[1]})'))
+        elif inst[0] == 'start':
+            output_list.append(float(text.startswith(inst[1])))
+        elif inst[0] == 'end':
+            output_list.append(float(text.endswith(inst[1])))
+        else:
+            raise NotImplementedError
+    return output_list

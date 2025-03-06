@@ -1,109 +1,6 @@
-import evaluate
-import json
-import os
-
-import pandas as pd
 import unicodedata
-import torchaudio
-import itertools
 
-from model import *
-from interface import *
-
-
-class EvalUnit:
-    inst_name: str
-
-    def __init__(self, model_name: str, sample_size=4):
-        self.inst_list = []
-        self.model_name = model_name
-        self.sample_size = sample_size
-        with open(f'./seed_instruction/{self.inst_name}.jsonl', 'r', encoding='utf-8') as file:
-            for line in file:
-                self.inst_list.append(json.loads(line.strip()))
-        self.inst_list = [inst.copy() for inst in self.inst_list for _ in range(self.sample_size)]
-
-        if os.path.exists(f'./output/{model_name}/{self.inst_name}.jsonl'):
-            self.res_list = []
-            with open(f'./output/{model_name}/{self.inst_name}.jsonl', 'r', encoding='utf-8') as file:
-                for line in file:
-                    self.res_list.append(json.loads(line.strip()))
-            for res in self.res_list:
-                image_list = []
-                for image_name in res['image_list']:
-                    image_list.append(Image.open(f'./output/{model_name}/image/{self.inst_name}_{image_name}.png'))
-                res['image_list'] = image_list
-                audio_list = []
-                for audio_name in res['audio_list']:
-                    audio, sr = librosa.load(f'./output/{model_name}/audio/{self.inst_name}_{audio_name}.wav')
-                    if sr != SAMPLE_RATE:
-                        audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
-                    audio_list.append(audio)
-                res['audio_list'] = audio_list
-            if len(self.inst_list) == len(self.res_list):
-                return
-
-        model = eval(f'{model_name}()')
-        query_list = []
-        for inst in self.inst_list:
-            if 'image_list' not in inst and 'audio_list' not in inst:
-                query_list.append(inst['instruction'])
-            else:
-                query = {'instruction': inst['instruction']}
-                if 'image_list' in inst:
-                    query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
-                if 'audio_list' in inst:
-                    query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
-                query_list.append(query)
-        self.res_list = model.generate(query_list)
-        self.save(save_all=True)
-
-    def save(self, save_all=False):
-        output_path = f'./output/{self.model_name}/'
-        os.makedirs(output_path, exist_ok=True)
-        os.makedirs(output_path + 'image/', exist_ok=True)
-        os.makedirs(output_path + 'audio/', exist_ok=True)
-        image_list = []
-        audio_list = []
-        output_list = []
-        image_idx = 0
-        audio_idx = 0
-        for res in self.res_list:
-            output = res.copy()
-            output['image_list'] = list(range(image_idx, image_idx + len(res['image_list'])))
-            output['audio_list'] = list(range(audio_idx, audio_idx + len(res['audio_list'])))
-            image_idx += len(res['image_list'])
-            audio_idx += len(res['audio_list'])
-            image_list += res['image_list']
-            audio_list += res['audio_list']
-            output_list.append(output)
-        with open(output_path + f'{self.inst_name}.jsonl', 'w', encoding='utf-8') as file:
-            for data in output_list:
-                file.write(json.dumps(data) + '\n')
-        if save_all:
-            for idx, image in enumerate(image_list):
-                image.save(output_path + f'image/{self.inst_name}_{idx}.png')
-        if save_all:
-            for idx, audio in enumerate(audio_list):
-                torchaudio.save(output_path + f'audio/{self.inst_name}_{idx}.wav', audio, SAMPLE_RATE)
-
-    def load_inst_mm(self):
-        for inst in self.inst_list:
-            if 'image_list' in inst:
-                inst['image_list'] = [Image.open(f'./seed_instruction/image/{self.inst_name}_{idx}.png') for idx in inst['image_list']]
-            if 'audio_list' in inst:
-                inst['audio_list'] = [librosa.load(f'./seed_instruction/audio/{self.inst_name}_{idx}.wav') for idx in inst['audio_list']]
-
-    def pad_inst_list(self):
-        self.inst_list = [inst for inst in self.inst_list for _ in range(self.sample_size)]
-
-    @abstractmethod
-    def evaluate(self):
-        pass
-
-    @abstractmethod
-    def calculate_metrics(self):
-        pass
+from eval import *
 
 
 class IObject(EvalUnit):
@@ -452,8 +349,8 @@ class IOCR(EvalUnit):
         wer_list = [1.0 if gpt_eval == '' and human_eval == '' else 0.0 if human_eval == '' else
                     1.0 - wer.compute(predictions=[gpt_eval], references=[human_eval])
                     for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
-        print(f"RougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
-        print(f"Word Error Rate for {self.inst_name}: ", np.mean(wer_list[8:]))
+        print(f"RougeL for {self.inst_name}: ", np.mean(rouge_list))
+        print(f"Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
 
         rouge_list = [1.0 if gpt_eval == '' and label == '' else
                       rouge.compute(predictions=[gpt_eval], references=[label])['rougeL']
@@ -461,8 +358,8 @@ class IOCR(EvalUnit):
         wer_list = [1.0 if gpt_eval == '' and label == '' else 0.0 if label == '' else
                     1.0 - wer.compute(predictions=[gpt_eval], references=[label])
                     for gpt_eval, label in zip(gpt_eval_list, label_list)]
-        print(f"GPT evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
-        print(f"GPT evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list[8:]))
+        print(f"GPT evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list))
+        print(f"GPT evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
 
         rouge_list = [1.0 if human_eval == '' and label == '' else
                       rouge.compute(predictions=[human_eval], references=[label])['rougeL']
@@ -470,8 +367,8 @@ class IOCR(EvalUnit):
         wer_list = [1.0 if human_eval == '' and label == '' else 0.0 if label == '' else
                     1.0 - wer.compute(predictions=[human_eval], references=[label])
                     for human_eval, label in zip(human_eval_list, label_list)]
-        print(f"Human evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list[8:]))
-        print(f"Human evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list[8:]))
+        print(f"Human evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list))
+        print(f"Human evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
 
 
 class IOCRLong(IOCR):
@@ -627,163 +524,5 @@ class IEditObjectModify(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_modify'
 
 
-class ASound(EvalUnit):
-    inst_name = 'a_sound'
-
-    @abstractmethod
-    def _evaluate(self):
-        pass
-
-    def evaluate(self):
-        audio_list, label_list, human_eval_res_list, idx_list = self._evaluate()
-
-        # CLAPScore audio-text
-        scores = compute_clapscore_at(audio_list, label_list)
-        for idx, data in enumerate(self.res_list):
-            data['clapscore_at'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        self.save()
-
-        # CLAPScore audio-audio
-        ref_audio_map = pd.read_csv('./datasets/ESC-50/dataset.csv')
-        scores = []
-        for audio, label in zip(audio_list, label_list):
-            file_list = ref_audio_map[ref_audio_map['category'] == label]['filename'].tolist()
-            ref_audio_list = []
-            for file_dir in file_list:
-                ref_audio, sr = librosa.load('./datasets/ESC-50/audio/' + file_dir)
-                if sr != SAMPLE_RATE:
-                    ref_audio = librosa.resample(ref_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
-                ref_audio_list.append(ref_audio)
-            scores.append(compute_clapscore_aa(audio, ref_audio_list))
-        for idx, data in enumerate(self.res_list):
-            data['clapscore_aa'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        self.save()
-
-        interface = MultiLabelInterface(
-            label_list=['Yes', 'No'],
-            eval_inst_list=[f"Is the given audio about {label}?" for label in label_list],
-            data_list=human_eval_res_list,
-            mm_type='a'
-        )
-        interface.start()
-        for idx, data in enumerate(self.res_list):
-            data['human_eval'] = [1.0 - float(interface.eval_list[i]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        self.save()
-
-        # # Beats score
-        # scores = audio_classification(audio_list, label_list)
-        # for idx, data in enumerate(self.res_list):
-        #     data['beats_score'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        # self.save()
-
-        # Gemini-2.0
-        query_list = [form_gemini_mm_query(f"Is the given audio the sound of {l}? Answer only yes or no.", audios=[a])
-                      for a, l in zip(audio_list, label_list)]
-        responses = batch(query_gemini, query_list, model='gemini-2.0-flash-exp', temperature=0.0, num_worker=1)
-        for idx, data in enumerate(self.res_list):
-            data['gemini_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        self.save()
-
-    def calculate_metrics(self, method='clapscore_aa', threshold=0.6):
-        model_eval_list = [res[method] for res in self.res_list]
-        human_eval_list = [res['human_eval'] for res in self.res_list]
-
-        # # Optimal threshold
-        # model_eval_cat = list(itertools.chain(*model_eval_list))
-        # human_eval_cat = list(itertools.chain(*human_eval_list))
-        # threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
-
-        model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
-        human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
-
-        print(f"Model evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
-
-
-class ASoundBeginEnd(ASound):
-    inst_name = 'a_sound_begin_end'
-
-    def _evaluate(self):
-        audio_list = []
-        label_list = []
-        human_eval_res_list = []
-        idx_list = []
-        idx = 0
-        for data, inst in zip(self.res_list, self.inst_list):
-            idx_list.append([])
-            if 'start' in inst:
-                audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 2])
-                label_list.append(inst['start'])
-                human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
-                idx_list[-1].append(idx)
-                idx += 1
-            if 'end' in inst:
-                audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 2:])
-                label_list.append(inst['end'])
-                human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
-                idx_list[-1].append(idx)
-                idx += 1
-        return audio_list, label_list, human_eval_res_list, idx_list
-
-
-class ASoundInclude(ASound):
-    inst_name = 'a_sound_include'
-
-    def _evaluate(self):
-        audio_list = []
-        label_list = []
-        human_eval_res_list = []
-        idx_list = []
-        idx = 0
-        for data, inst in zip(self.res_list, self.inst_list):
-            begin = round(inst['range'][0] * len(data['audio_list'][0]))
-            end = round(inst['range'][1] * len(data['audio_list'][0]))
-            audio_list.append(data['audio_list'][0][begin: end])
-            label_list.append(inst['target'])
-            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
-            idx_list.append([idx])
-            idx += 1
-        return audio_list, label_list, human_eval_res_list, idx_list
-
-
-class ASoundCoT(ASound):
-    inst_name = 'a_sound_cot'
-
-    def _evaluate(self):
-        return (
-            [data['audio_list'][0] for data in self.res_list],
-            [inst['target'] for inst in self.inst_list],
-            self.res_list,
-            [[i] for i in range(len(self.res_list))]
-        )
-
-
-class ASoundSilence(ASound):
-    inst_name = 'a_sound_silence'
-
-    def _evaluate(self):
-        audio_list = []
-        label_list = []
-        human_eval_res_list = []
-        idx_list = []
-        idx = 0
-        for data, inst in zip(self.res_list, self.inst_list):
-            audio_segs = audio_segmentation(data['audio_list'][0])
-            if len(audio_segs) != 2:
-                idx_list.append([FAILED_TOKEN, FAILED_TOKEN])
-                continue
-            audio_list += audio_segs
-            label_list += [inst['start'], inst['end']]
-            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_segs[0]]})
-            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_segs[1]]})
-            idx_list.append([idx, idx + 1])
-            idx += 2
-        return audio_list, label_list, human_eval_res_list, idx_list
-
-
 if __name__ == '__main__':
-    a = ASoundSilence(model_name='TangoFlux')
-    # a.evaluate()
-    a.calculate_metrics('clapscore_aa')
+    pass
