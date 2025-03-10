@@ -25,17 +25,14 @@ class EvalUnit:
         model = eval(f'{model_name}()')
         query_list = []
         for inst in self.inst_list:
-            if 'image_list' not in inst and 'audio_list' not in inst:
-                query_list.append(inst['instruction'])
-            else:
-                query = {'instruction': inst['instruction']}
-                if 'image_list' in inst:
-                    query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
-                if 'audio_list' in inst:
-                    query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
-                if 'text_list' in inst:
-                    query['text_list'] = inst['text_list']
-                query_list.append(query)
+            query = {'instruction': inst['instruction']}
+            if 'image_list' in inst:
+                query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
+            if 'audio_list' in inst:
+                query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
+            if 'text_list' in inst:
+                query['text_list'] = inst['text_list']
+            query_list.append(query)
         self.res_list = model.generate(query_list)
         self.save(save_all=True)
         self.load()
@@ -102,6 +99,9 @@ class EvalUnit:
 
     @abstractmethod
     def evaluate(self):
+        pass
+
+    def human_evaluate(self):
         pass
 
     @abstractmethod

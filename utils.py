@@ -172,7 +172,9 @@ def calculate_ssim(img1, img2):
 
 
 def calculate_kappa(list1, list2):
-    if list1 == list2:
+    list1 = np.array(list1)
+    list2 = np.array(list2)
+    if all(list1 == list2):
         return 1.0
     return cohen_kappa_score(list1, list2)
 

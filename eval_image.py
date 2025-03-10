@@ -1,6 +1,7 @@
 import unicodedata
 
 from eval import *
+from prompt import *
 
 
 class IObject(EvalUnit):
@@ -87,7 +88,7 @@ class IObjectInclude(IObject):
 
     @staticmethod
     def instruction_func(obj):
-        return f"Is/Are there {obj} in the given image? Answer only yes or no.\n"
+        return I_OBJECT_EXIST_PROMPT(obj)
 
     @staticmethod
     def human_instruction_func(obj):
@@ -136,14 +137,12 @@ class IObjectCounting(IObject):
     label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
 
     @staticmethod
-    def instruction_func(inst: dict):
-        return (f"How many {inst['object']} are there in the given image? Choose from the options:\n"
-                f"A. Less than 3\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\n"
-                f"Respond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information.")
+    def instruction_func(obj):
+        return I_OBJECT_COUNT_PROMPT(obj)
 
     @staticmethod
-    def human_instruction_func(inst: dict):
-        return f"How many {inst['object']} are there in the given image?\n"
+    def human_instruction_func(obj):
+        return f"How many {obj} are there in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):

@@ -1,9 +1,11 @@
 import random
 import os
 import shutil
+import subprocess
 from abc import abstractmethod
 from transformers import MusicgenForConditionalGeneration
 
+from prompt import I_AGENT_PROMPT
 from utils import *
 
 
@@ -13,10 +15,7 @@ class Model:
     @abstractmethod
     def generate(self, query_list):
         """
-        :param sample_size:
-        :param save_name: str
         :param query_list: List[str]
-        :return: res_list
         Format of an item in the response list:
         {
             "query": "Can you give me a step-by-step tutorial of how to make tomato soup?",
@@ -29,7 +28,9 @@ class Model:
 
 
 class Dalle3(Model):
-    model_name = 'dall-e-3'
+    def __init__(self, model_name='dall-e-3', revise=True):
+        self.model_name = model_name
+        self.revise = revise
 
     @staticmethod
     def generate_image_from_openai(index, prompt, model):
@@ -61,6 +62,8 @@ class Dalle3(Model):
         return index, None
 
     def generate(self, query_list):
+        query_list = ['' if self.revise else 'I NEED to test how the tool works with extremely simple prompts. DO NOT add any detail, just use it AS-IS:'
+                      + query['instruction'] for query in query_list]
         image_list = batch(self.generate_image_from_openai, query_list, model=self.model_name)
         res_list = []
         for query, image in zip(query_list, image_list):
@@ -121,14 +124,13 @@ class TangoFlux(Model):
                 'query': query,
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
-                'audio_list': [self.model.generate(query, steps=50, duration=5, seed=random.randint(0, 1000))],
+                'audio_list': [self.model.generate(query['instruction'], steps=50, duration=5, seed=random.randint(0, 1000))],
             })
         return res_list
 
 
 class VoxInstruct(Model):
     def __init__(self):
-        super().__init__()
         self.mllm_prompt = ('###Instrution:\n Your task is to generate a speech transcript based on a user\'s prompt. '
                             'The prompt is either generating a new transcript or modifying the original speech transcript (given in speech audio) to meet the format requirement. '
                             'You should output ONLY the final generated or modified transcript, omitting your thinking process.'
@@ -140,11 +142,11 @@ class VoxInstruct(Model):
         """
         VoxInstruct only support file I/O.
         For simplicity, we apply re.match to extract keyword. We will employ LLMs to parse paraphrased instructions.
+        TODO: Vox + Instruct should be implemented here instead of rule-based
         """
         transcript_list = None
-        if isinstance(query_list[0], str):
-            input_list = [f"{idx}|{0 if language == 'english' else 1}|{query[21:]}|\n" for idx, query in
-                          enumerate(query_list)]
+        if not any(['audio_list' in query for query in query_list]):
+            input_list = [f"{idx}|{0 if language == 'english' else 1}|{query[21:]}|\n" for idx, query in enumerate(query_list)]
         else:
             if query_list[0]['instruction'].startswith('Read'):
                 input_list = []
@@ -185,7 +187,7 @@ class MusicGen(Model):
         self.model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-large").to('cuda')
 
     def generate(self, query_list):
-        query_list = [query[9:] for query in query_list]
+        query_list = [query['instruction'][9:] for query in query_list]
         output_list = []
         for query in tqdm(query_list):
             inputs = self.processor(text=[query], padding=True, return_tensors="pt").to('cuda')
@@ -217,3 +219,64 @@ class AudioAgent(Model):
 
     def generate(self, query_list):
         pass
+
+
+class Anole(Model):
+    def generate(self, query_list):
+        os.makedirs('./models/Anole/input/', exist_ok=True)
+        with open('./models/Anole/input/prompt.txt', 'w', encoding='utf-8') as f:
+            f.writelines([query['instruction'] + '\n' for query in query_list])
+        os.chdir("./models/Anole")
+        if os.path.exists('./output'):
+            shutil.rmtree('./output')
+            print('History output has been removed!')
+        os.system(f"python interleaved_generation.py")
+        os.chdir("../..")
+        output_list = []
+        for idx, query in enumerate(query_list):
+            dir_path = f'./models/Anole/output/{idx}/'
+            with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
+                text = ''.join(f.readlines())
+            image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
+            output_list.append({
+                'query': query,
+                'response': text,
+                'image_list': image_list,
+                'audio_list': [],
+            })
+        return output_list
+
+
+class ImageAgent(Model):
+    def __init__(self, mllm='gpt-4o', diffusion='dalle3'):
+        self.mllm = mllm
+        self.diffusion = {
+            'dalle3': Dalle3(revise=False)
+        }[diffusion]
+        self.system_prompt = [{"role": "developer", "content": I_AGENT_PROMPT}]
+
+    def generate(self, query_list):
+        mllm_query_list = [self.system_prompt + form_openai_mm_query(query['instruction']) for query in query_list]
+        responses = batch(query_openai, mllm_query_list, model='gpt-4o-2024-11-20', temperature=0.0)
+        diffusion_query_list = []
+        output_list = []
+        idx = 0
+        pattern = r'<image_start>(.*?)<image_end>'
+        for query, res in zip(query_list, responses):
+            image_prompts = re.findall(pattern, res)
+            for i in range(len(image_prompts)):
+                diffusion_query_list.append({'instruction': image_prompts[i]})
+                old_tag = f"<image_start>{image_prompts[i]}<image_end>"
+                new_tag = f"<image_start><image_{i}><image_end>"
+                res = res.replace(old_tag, new_tag)
+            output_list.append({
+                'query': query,
+                'response': res,
+                'image_list': list(range(idx, idx + len(image_prompts))),
+                'audio_list': [],
+            })
+            idx += len(image_prompts)
+        res_list = self.diffusion.generate(diffusion_query_list)
+        for output in output_list:
+            output['image_list'] = [res_list[i]['image_list'][0] for i in output['image_list']]
+        return output_list
