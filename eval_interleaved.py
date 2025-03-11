@@ -59,6 +59,6 @@ class IConsistencySemantic(EvalUnit):
 
 if __name__ == '__main__':
     # a = IConsistencySemantic(model_name='Anole', sample_size=2)
-    a = IConsistencySemantic(model_name='ImageAgent', sample_size=2)
+    a = IObjectInclude(model_name='ImageAgent', sample_size=2)
     # a.evaluate()
-    a.calculate_metrics()
+    # a.calculate_metrics()
