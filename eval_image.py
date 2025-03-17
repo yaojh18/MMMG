@@ -1,4 +1,5 @@
 import unicodedata
+import string
 
 from eval import *
 from prompt import *
@@ -28,58 +29,60 @@ class IObject(EvalUnit):
         pass
 
     def evaluate(self):
-        if not all(['gpt_eval' in res for res in self.res_list]):
-            queries = []
-            idx = 0
-            for data, inst in zip(self.res_list, self.inst_list):
-                obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
-                queries += [form_openai_mm_query(
-                    IMAGE_TOKEN(0) + self.instruction_func(obj),
-                    images=data['image_list']) for obj in obj_list
-                ]
-                data['gpt_eval'] = list(range(idx, idx + len(obj_list)))
-                idx += len(obj_list)
-            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-            parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
-            for data in self.res_list:
-                data['gpt_eval'] = [parsed_responses[idx] for idx in data['gpt_eval']]
-            self.save()
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
+            queries += [form_openai_mm_query(
+                IMAGE_TOKEN(0) + self.instruction_func(obj),
+                images=data['image_list']) for obj in obj_list
+            ]
+            data['model_eval'] = list(range(idx, idx + len(obj_list)))
+            idx += len(obj_list)
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
+        for data in self.res_list:
+            data['model_eval'] = [parsed_responses[idx] for idx in data['model_eval']]
+        self.save()
 
-        if not all(['human_eval' in res for res in self.res_list]):
-            human_inst_list = []
-            human_res_list = []
-            idx = 0
+        if self.inst_name == 'i_object_counting':
             for data, inst in zip(self.res_list, self.inst_list):
-                obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
-                human_inst_list += [self.human_instruction_func(obj) for obj in obj_list]
-                human_res_list += [data] * len(obj_list)
-                data['human_eval'] = list(range(idx, idx + len(obj_list)))
-                idx += len(obj_list)
-            interface = MultiLabelInterface(
-                label_list=self.label_list,
-                eval_inst_list=human_inst_list,
-                data_list=human_res_list,
-            )
-            interface.start()
-            for data in self.res_list:
-                data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
-            self.save()
+                data['model_eval'] = float(data['model_eval'] == (inst['count'] - 2))
+
+    def human_eval(self):
+        human_inst_list = []
+        human_res_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
+            human_inst_list += [self.human_instruction_func(obj) for obj in obj_list]
+            human_res_list += [data] * len(obj_list)
+            data['human_eval'] = list(range(idx, idx + len(obj_list)))
+            idx += len(obj_list)
+        interface = MultiLabelInterface(
+            label_list=self.label_list,
+            eval_inst_list=human_inst_list,
+            data_list=human_res_list,
+        )
+        interface.start()
+        for data in self.res_list:
+            data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
+        self.save()
 
         if self.inst_name == 'i_object_counting':
             for data, inst in zip(self.res_list, self.inst_list):
                 data['human_eval'] = float(data['human_eval'] == (inst['count'] - 2))
-                data['gpt_eval'] = float(data['gpt_eval'] == (inst['count'] - 2))
             self.save()
 
     def calculate_metrics(self):
-        gpt_eval_list = [np.mean(res['gpt_eval']) for res in self.res_list]
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        print(f"GPT evaluation accuracy for {self.inst_name}: ", np.mean(gpt_eval_list))
+        print(f"GPT evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        gpt_eval_list = np.concatenate([res['gpt_eval'] for res in self.res_list])
+        model_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
         human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(gpt_eval_list, human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(gpt_eval_list, human_eval_list))
+        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(model_eval_list, human_eval_list))
+        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
 
 
 class IObjectInclude(IObject):
@@ -180,50 +183,52 @@ class ISpacial(EvalUnit):
         pass
 
     def evaluate(self):
-        if not all(['gpt_eval' in res for res in self.res_list]):
-            queries = []
-            idx = 0
-            for data, inst in zip(self.res_list, self.inst_list):
-                for constraint in inst['constraints']:
-                    queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(constraint), images=data['image_list']))
-                data['gpt_eval'] = list(range(idx, idx + len(inst['constraints'])))
-                idx += len(inst['constraints'])
-            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-            parsed_responses = [self.gpt_judge_parse_func(res) for res in responses]
-            for data, inst in zip(self.res_list, self.inst_list):
-                data['gpt_eval'] = [self.gpt_judge_process_func(parsed_responses[gpt_eval], constraint) for
-                                    gpt_eval, constraint in zip(data['gpt_eval'], inst['constraints'])]
-            self.save()
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            for constraint in inst['constraints']:
+                queries.append(form_openai_mm_query(
+                    IMAGE_TOKEN(0) + self.instruction_func(constraint),
+                    images=data['image_list']
+                ))
+            data['model_eval'] = list(range(idx, idx + len(inst['constraints'])))
+            idx += len(inst['constraints'])
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        parsed_responses = [self.gpt_judge_parse_func(res) for res in responses]
+        for data, inst in zip(self.res_list, self.inst_list):
+            data['model_eval'] = [self.gpt_judge_process_func(parsed_responses[model_eval], constraint) for
+                                model_eval, constraint in zip(data['model_eval'], inst['constraints'])]
+        self.save()
 
-        if not all(['human_eval' in res for res in self.res_list]):
-            human_queries = []
-            human_res_list = []
-            idx = 0
-            for data, inst in zip(self.res_list, self.inst_list):
-                human_res_list += [data] * len(inst['constraints'])
-                for constraint in inst['constraints']:
-                    human_queries.append(self.human_instruction_func(constraint))
-                data['human_eval'] = list(range(idx, idx + len(inst['constraints'])))
-                idx += len(inst['constraints'])
-            interface = MultiLabelInterface(
-                label_list=("Yes", "No"),
-                eval_inst_list=human_queries,
-                data_list=human_res_list
-            )
-            interface.start()
-            for data in self.res_list:
-                data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
-            self.save()
+    def human_evaluate(self):
+        human_queries = []
+        human_res_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            human_res_list += [data] * len(inst['constraints'])
+            for constraint in inst['constraints']:
+                human_queries.append(self.human_instruction_func(constraint))
+            data['human_eval'] = list(range(idx, idx + len(inst['constraints'])))
+            idx += len(inst['constraints'])
+        interface = MultiLabelInterface(
+            label_list=("Yes", "No"),
+            eval_inst_list=human_queries,
+            data_list=human_res_list
+        )
+        interface.start()
+        for data in self.res_list:
+            data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
+        self.save()
 
     def calculate_metrics(self):
-        gpt_eval_list = [np.mean(res['gpt_eval']) for res in self.res_list]
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(gpt_eval_list))
+        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        gpt_eval_list = np.concatenate([res['gpt_eval'] for res in self.res_list])
+        model_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
         human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(gpt_eval_list, human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(gpt_eval_list, human_eval_list))
+        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(model_eval_list, human_eval_list))
+        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
 
 
 class ISpacialAbsolute(ISpacial):
@@ -231,9 +236,7 @@ class ISpacialAbsolute(ISpacial):
 
     @staticmethod
     def instruction_func(const: dict):
-        return (f'Where is {const[0]} in the given image? Choose from the options:\n'
-                f'A. bottom left B. bottom right C. up left D. up right E. none of above F. object not exist\n'
-                f'Do not provide any explanation, reasoning, or additional information.\n')
+        return I_SPACIAL_ABSOLUTE_PROMPT(const[0])
 
     @staticmethod
     def human_instruction_func(const: dict):
@@ -258,23 +261,9 @@ class ISpacialRelative(ISpacial):
     @staticmethod
     def instruction_func(const: dict):
         if const[2] in ('to the left of', 'to the right of'):
-            return (
-                f'What is the relative left-right relationship of {const[0]} and {const[1]} in the given image? Be careful there may be multimple objects. Choose from the options:\n'
-                f'A. {const[0]} is to the left of {const[1]}.\n'
-                f'B. {const[0]} is to the right of {const[1]}.\n'
-                f'C. {const[0]} is either distinctly to the left or right of the {const[1]}.\n'
-                f'D. multiple {const[0]} or {const[1]} are in the given image and their relationship are inconsistent, thus unable to determine.\n'
-                f'E. either {const[0]} or {const[1]} is not clearly visible in the given image.\n'
-                f'Do not provide any explanation, reasoning, or additional information. Do not consider perspective.\n')
+            return I_SPACIAL_RELATIVE_FR(const[0], const[1])
         else:
-            return (
-                f'What is the relative up-down relationship of {const[0]} and {const[1]} in the given image? Be careful there may be multimple objects. Choose from the options:\n'
-                f'A. {const[0]} is above {const[1]}.\n'
-                f'B. {const[0]} is below {const[1]}.\n'
-                f'C. {const[0]} is either distinctly above or below {const[1]}.\n'
-                f'D. multiple {const[0]} or {const[1]} are in the given image and their relationship are inconsistent, thus unable to determine.\n'
-                f'E. either {const[0]} or {const[1]} is not clearly visible in the given image.\n'
-                f'Do not provide any explanation, reasoning, or additional information. Do not consider perspective.\n')
+            return I_SPACIAL_RELATIVE_UD(const[0], const[1])
 
     @staticmethod
     def human_instruction_func(const: dict):
@@ -298,80 +287,146 @@ class ISpacialRelative(ISpacial):
 
 class IOCR(EvalUnit):
     inst_name = 'i_ocr'
+    language = 'english'
 
     def evaluate(self):
-        if not all(['gpt_eval' in res for res in self.res_list]):
-            instruction = ("### Instruction:\n"
-                           "Recognize all the major texts in the given image. Only recognize and output texts in Latin alphabet characters (a-z, A-Z) and punctuation. Do not correct the text if it is misspelled, nonsense or wrong, output the most direct recognition result. Do not call any function.\n"
-                           "### Output format:\n"
-                           "[only a executable Python list of all recognized texts from top to down, from left to right]")
-            queries = []
-            for data in self.res_list:
-                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
-            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-            for data, res in zip(self.res_list, responses):
-                try:
-                    data['gpt_eval'] = self.normalize_text(' '.join(eval(res)).lower().strip())
-                except Exception:
-                    data['gpt_eval'] = ''
-            self.save()
+        queries = []
+        for data in self.res_list:
+            queries.append(form_openai_mm_query(
+                IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT('the given image'),
+                images=data['image_list']
+            ))
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        pattern = r'(\[.*\]?)'
+        for data, res in zip(self.res_list, responses):
+            text_res = re.search(pattern, res)
+            if text_res is not None:
+                text_res = eval(text_res.group(1))
+            else:
+                text_res = []
+            data['model_eval'] = ' '.join(text_res).lower().strip()
+        self.save()
 
-        if not all(['human_eval' in res for res in self.res_list]):
-            interface = FreeLabelInterface(
-                eval_inst_list=["Please type the major recognized texts (case insensitive) from top to down, from left to right in the given image."] * len(self.res_list),
-                data_list=self.res_list
-            )
-            interface.start()
-            for data, human_eval in zip(self.res_list, interface.eval_list):
-                data['human_eval'] = human_eval.lower().strip()
-            self.save()
+    def human_evaluate(self):
+        interface = FreeLabelInterface(
+            eval_inst_list=["Please type the major texts (ignore small texts on the edge) from top to down, "
+                            "from left to right in the given image. Leave empty if the there is no valid Latin "
+                            "character in the given image. Ignore small texts in the corner."] * len(self.res_list),
+            data_list=self.res_list
+        )
+        interface.start()
+        for data, human_eval in zip(self.res_list, interface.eval_list):
+            data['human_eval'] = human_eval.lower().strip()
+        self.save()
 
     def calculate_metrics(self, ignore_null=True):
-        label_list = [inst['text'].lower().strip() for inst in self.inst_list]
-        label_list = [label for label, res in zip(label_list, self.res_list) if res['gpt_eval'] != '' or not ignore_null]
-        gpt_eval_list = [res['gpt_eval'] for res in self.res_list if res['gpt_eval'] != '' or not ignore_null]
-        human_eval_list = [res['human_eval'] for res in self.res_list if res['gpt_eval'] != '' or not ignore_null]
-        self._calculate_metrics(label_list, gpt_eval_list, human_eval_list)
+        label_list = [[self.normalize_text(inst['text'])] for inst, res in zip(self.inst_list, self.res_list) if res['model_eval'] != '' or not ignore_null]
+        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list if res['model_eval'] != '' or not ignore_null]
+        human_eval_list = [[self.normalize_text(res['human_eval'])] for res in self.res_list if res['model_eval'] != '' or not ignore_null]
+        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
 
     @staticmethod
     def normalize_text(text):
-        normalized_text = unicodedata.normalize('NFD', text)
-        return ''.join(char for char in normalized_text if unicodedata.category(char) != 'Mn')
+        normalized_text = text.lower().strip()
+        normalized_text = normalized_text.translate(str.maketrans('', '', string.punctuation))
+        normalized_text = unicodedata.normalize('NFD', normalized_text)
+        normalized_text = ''.join(char for char in normalized_text if unicodedata.category(char) != 'Mn')
+        return normalized_text if normalized_text != '' else FAILED_TOKEN
 
-    def _calculate_metrics(self, label_list, gpt_eval_list, human_eval_list):
-        rouge = evaluate.load('rouge')
-        wer = evaluate.load('wer')
-
-        rouge_list = [1.0 if gpt_eval == '' and human_eval == '' else
-                      rouge.compute(predictions=[gpt_eval], references=[human_eval])['rougeL']
-                      for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
-        wer_list = [1.0 if gpt_eval == '' and human_eval == '' else 0.0 if human_eval == '' else
-                    1.0 - wer.compute(predictions=[gpt_eval], references=[human_eval])
-                    for gpt_eval, human_eval in zip(gpt_eval_list, human_eval_list)]
-        print(f"RougeL for {self.inst_name}: ", np.mean(rouge_list))
+    def _calculate_metrics(self, label_list, model_eval_list, human_eval_list):
+        wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
+        wer_list = [1.0 - wer.compute(predictions=model_eval, references=human_eval)
+                    for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
         print(f"Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
-
-        rouge_list = [1.0 if gpt_eval == '' and label == '' else
-                      rouge.compute(predictions=[gpt_eval], references=[label])['rougeL']
-                      for gpt_eval, label in zip(gpt_eval_list, label_list)]
-        wer_list = [1.0 if gpt_eval == '' and label == '' else 0.0 if label == '' else
-                    1.0 - wer.compute(predictions=[gpt_eval], references=[label])
-                    for gpt_eval, label in zip(gpt_eval_list, label_list)]
-        print(f"GPT evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list))
+        wer_list = [1.0 - wer.compute(predictions=model_eval, references=label)
+                    for model_eval, label in zip(model_eval_list, label_list)]
         print(f"GPT evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
-
-        rouge_list = [1.0 if human_eval == '' and label == '' else
-                      rouge.compute(predictions=[human_eval], references=[label])['rougeL']
-                      for human_eval, label in zip(human_eval_list, label_list)]
-        wer_list = [1.0 if human_eval == '' and label == '' else 0.0 if label == '' else
-                    1.0 - wer.compute(predictions=[human_eval], references=[label])
+        wer_list = [1.0 - wer.compute(predictions=human_eval, references=label)
                     for human_eval, label in zip(human_eval_list, label_list)]
-        print(f"Human evaluation rougeL for {self.inst_name}: ", np.mean(rouge_list))
         print(f"Human evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
 
 
-class IOCRLong(IOCR):
-    inst_name = 'i_ocr_long'
+class IOCRTwo(IOCR):
+    inst_name = 'i_ocr_two'
+
+    def evaluate(self):
+        queries = []
+        for data, inst in zip(self.res_list, self.inst_list):
+            queries.append(form_openai_mm_query(
+                IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(inst['object']),
+                images=data['image_list']
+            ))
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data, res in zip(self.res_list, responses):
+            if res.lower().startswith('yes'):
+                data['model_eval'] = [0.0, 0.0]
+            else:
+                data['model_eval'] = [FAILED_TOKEN, FAILED_TOKEN]
+        self.save()
+
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if FAILED_TOKEN not in data['model_eval']:
+                queries += [form_openai_mm_query(
+                    IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT('ONLY' + obj),
+                    images=data['image_list']) for obj in inst['text'].keys()
+                ]
+                data['model_eval'] = [idx, idx + 1]
+                idx += 2
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        pattern = r'(\[.*\]?)'
+        for data in self.res_list:
+            if FAILED_TOKEN not in data['model_eval']:
+                for i in range(2):
+                    text_res = re.search(pattern, responses[data['model_eval'][i]])
+                    if text_res is not None:
+                        text_res = eval(text_res.group(1))
+                    else:
+                        text_res = []
+                    data['model_eval'][i] = ' '.join(text_res).lower().strip()
+        self.save()
+
+    def human_evaluate(self):
+        interface = MultiLabelInterface(
+            label_list=('Yes', 'No'),
+            eval_inst_list=[f"Is/Are there {inst['object']} in the given image?" for inst in self.inst_list],
+            data_list=self.res_list
+        )
+        interface.start()
+        for data, human_eval in zip(self.res_list, interface.eval_list):
+            if human_eval == 0:
+                data['human_eval'] = [0.0, 0.0]
+            else:
+                data['human_eval'] = [FAILED_TOKEN, FAILED_TOKEN]
+        self.save()
+
+        data_list = []
+        eval_inst_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if FAILED_TOKEN not in data['human_eval']:
+                data_list += [data, data]
+                eval_inst_list += [(f"Please type the major texts (ignore small texts on the edge) on {obj} from top to down, "
+                                    f"from left to right in the given image. Leave empty if the there is no valid Latin "
+                                    f"character in the given image. Ignore small texts in the corner.") for obj in inst['text'].keys()]
+                data['human_eval'] = [idx, idx + 1]
+                idx += 2
+        interface = FreeLabelInterface(
+            data_list=data_list,
+            eval_inst_list=eval_inst_list
+        )
+        interface.start()
+        for data in self.res_list:
+            if FAILED_TOKEN not in data['human_eval']:
+                data['human_eval'] = [interface.eval_list[i].lower().strip() for i in data['human_eval']]
+        self.save()
+
+    def calculate_metrics(self):
+        label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
+        model_eval_list = [[self.normalize_text(t) for t in res['model_eval']] for res in self.res_list]
+        human_eval_list = [[self.normalize_text(t) for t in res['human_eval']] for res in self.res_list]
+        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
     
 
 class IOCRGerman(IOCR):
@@ -380,43 +435,41 @@ class IOCRGerman(IOCR):
 
 class IOCRChinese(IOCR):
     inst_name = 'i_ocr_chinese'
+    language = 'chinese'
 
     def evaluate(self):
-        instruction = ("### Instruction:\n"
-                       "You are a conservative text recognition model. Your task is to recognize all the major Chinese characters in the given image. If the Chinese characters in the image are wrongly written or distorted, you should return empty result. Do not call any function.\n"
-                       "### Output format:\n"
-                       "Ony a string of all recognized texts from top to down, from left to right. Do not add quotations.")
-        if not all(['gpt_eval' in res for res in self.res_list]):
-            queries = []
-            for data in self.res_list:
-                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
-            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-            for data, res in zip(self.res_list, responses):
-                data['gpt_eval'] = ''.join(re.findall(r'[\u4e00-\u9fff]', res))
-            self.save()
+        queries = []
+        for data in self.res_list:
+            queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_OCR_CHINESE_PROMPT, images=data['image_list']))
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data, res in zip(self.res_list, responses):
+            data['model_eval'] = [''.join(re.findall(r'[\u4e00-\u9fff]', res))]
+        self.save()
 
-        if not all(['gemini_eval' in res for res in self.res_list]):
-            queries = []
-            for data in self.res_list:
-                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + instruction, images=data['image_list']))
-            responses = batch(query_openai, queries, model='gemini-2.0-flash-exp', temperature=0.0, dtype='gemini')
-            for data, res in zip(self.res_list, responses):
-                data['gemini_eval'] = ''.join(re.findall(r'[\u4e00-\u9fff]', res))
-            self.save()
+        queries = []
+        for data in self.res_list:
+            queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_OCR_CHINESE_PROMPT, images=data['image_list']))
+        responses = batch(query_openai, queries, model='gemini-2.0-flash-exp', temperature=0.0, dtype='gemini')
+        for data, res in zip(self.res_list, responses):
+            data['model_eval'].append(''.join(re.findall(r'[\u4e00-\u9fff]', res)))
+            data['model_eval_score'] = ''.join(set(res['model_eval'][0]).intersection(set(res['model_eval'][1])))
+        self.save()
 
-        if not all(['human_eval' in res for res in self.res_list]):
-            interface = FreeLabelInterface(
-                eval_inst_list=["Please type the major Chinese characters from top to down, from left to right in the given image. Leave empty if the there is no valid Chinese character in the given image."] * len(self.res_list),
-                data_list=self.res_list
-            )
-            interface.start()
-            for data, human_eval in zip(self.res_list, interface.eval_list):
-                data['human_eval'] = human_eval.lower().strip()
-            self.save()
+    def human_evaluate(self):
+        interface = FreeLabelInterface(
+            eval_inst_list=["Please type the major Chinese characters from top to down, from left to right in the given "
+                            "image. Leave empty if the there is no valid Chinese character in the given image. "
+                            "Ignore small texts in the corner."] * len(self.res_list),
+            data_list=self.res_list
+        )
+        interface.start()
+        for data, human_eval in zip(self.res_list, interface.eval_list):
+            data['human_eval'] = human_eval.lower().strip()
+        self.save()
 
     def calculate_metrics(self):
         label_list = [inst['text'] for inst in self.inst_list]
-        model_eval_list = [''.join(set(res['gpt_eval']).intersection(set(res['gemini_eval']))) for res in self.res_list]
+        model_eval_list = [res['model_eval_score'] for res in self.res_list]
         human_eval_list = [res['human_eval'] for res in self.res_list]
 
         self._calculate_metrics(label_list, model_eval_list, human_eval_list)
@@ -524,4 +577,5 @@ class IEditObjectModify(IEdit, IObjectInclude):
 
 
 if __name__ == '__main__':
-    pass
+    a = IOCRTwo(model_name='Dalle3', sample_size=2)
+    a.calculate_metrics()

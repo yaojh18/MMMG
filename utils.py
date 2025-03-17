@@ -1,7 +1,6 @@
 import openai
 import time
 import base64
-import requests
 import collections
 import re
 import librosa
@@ -16,7 +15,7 @@ from tqdm import tqdm
 from PIL import Image
 from io import BytesIO
 from typing import Callable
-from collections import Counter
+from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
 from sklearn.metrics import cohen_kappa_score
@@ -103,7 +102,7 @@ def form_openai_mm_query(text, images=(), audios=()):
 
 
 def form_gemini_mm_query(text, images=(), audios=()):
-    message = [text]
+    message = [text] + images
     for audio in audios:
         message.append({
             "mime_type": "audio/wav",
@@ -166,9 +165,29 @@ def query_gemini(index, query, model, temperature):
 
 
 def calculate_ssim(img1, img2):
+    if img1.size != img2.size:
+        img1 = img1.resize(img2.size, Image.LANCZOS)
     img1 = np.array(img1)
     img2 = np.array(img2)
     return ssim(img1, img2, channel_axis=-1)
+
+dreamsim_model = None
+def calculate_dreamsim(img1, img2):
+    def preprocess(img):
+        img = img.convert('RGB')
+        return transforms.Compose([
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor()
+        ])(img).unsqueeze(0)
+
+    global dreamsim_model
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if dreamsim_model is None:
+        from dreamsim import dreamsim
+        dreamsim_model, _ = dreamsim(pretrained=True, device=device, cache_dir="./libs/DreamSim")
+    img1 = preprocess(img1).to(device)
+    img2 = preprocess(img2).to(device)
+    return 1.0 - float(dreamsim_model(img1, img2))
 
 
 def calculate_kappa(list1, list2):
@@ -337,7 +356,7 @@ def transcribe_speech(audio_list, text_list=None, language='english'):
     return trans_list, wer_list
 
 
-def calculate_pitch_and_speed(audio, gender, transcript, inst, language='english'):
+def calculate_pitch(audio, gender, inst):
     import parselmouth
 
     def extract_pitch(audio, hop_size=256, f0_min=80, f0_max=600, num_bins=100):
@@ -347,8 +366,6 @@ def calculate_pitch_and_speed(audio, gender, transcript, inst, language='english
             pitch_ceiling=f0_max,
         )
         pitch_values = pitch_obj.selected_array['frequency']
-        if language == 'chinese':
-            return float(np.median(pitch_values[pitch_values != 0]))
         pitch_times = pitch_obj.xs()
         intensity_obj = parselmouth.Sound(audio, SAMPLE_RATE).to_intensity(
             time_step=hop_size / SAMPLE_RATE, minimum_pitch=f0_min
@@ -362,30 +379,43 @@ def calculate_pitch_and_speed(audio, gender, transcript, inst, language='english
         pitch_values = pitch_values[voiced_mask]
         intensity_values = intensity_values[voiced_mask]
 
-        bins = np.linspace(min(pitch_values) - 0.1, max(pitch_values) + 0.1, num=num_bins)
-        bin_indices = np.digitize(pitch_values, bins)
+        mel_pitch_values = 2595 * np.log10(1 + pitch_values / 700)
+        bins = np.linspace(min(mel_pitch_values) - 0.1, max(mel_pitch_values) + 0.1, num=num_bins)
+        bin_indices = np.digitize(mel_pitch_values, bins)
         cumulative_intensity = np.zeros(num_bins)
         for idx, val in zip(bin_indices, intensity_values):
             cumulative_intensity[idx] += val
         best_bin = np.argmax(cumulative_intensity)
         best_mask = (bin_indices == best_bin)
-        main_pitch = np.sum(pitch_values[best_mask] * intensity_values[best_mask]) / np.sum(intensity_values[best_mask])
-        return main_pitch
+        main_mel_pitch = np.sum(mel_pitch_values[best_mask] * intensity_values[best_mask]) / np.sum(intensity_values[best_mask])
+        return main_mel_pitch
 
-    pitch_ms, pitch_fs, speed_s = FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN
     pitch = extract_pitch(audio)
-    speed = ((len(transcript.split(' ')) if language == 'english' else len(transcript))
-             * SAMPLE_RATE * 60 / len(librosa.effects.trim(audio)[0]))
 
     if 'pitch' in inst:
         if gender == 0:
-            pitch_ms = float((pitch < 123.0) and (inst['pitch'] == 'low') or (pitch > 92.0) and (inst['pitch'] == 'high'))
-        elif gender == 1:
-            pitch_fs = float((pitch < 195.0) and (inst['pitch'] == 'low') or (pitch > 163.0) and (inst['pitch'] == 'high'))
+            pitch_s = min(140.0, max(182.0, pitch))
+            pitch_s = float(inst['pitch'] == 'high') * (pitch_s - 140.0) / 42.0 + float(inst['pitch'] == 'low') * (182.0 - pitch_s) / 42.0
+        else:
+            pitch_s = min(236.0, max(278.0, pitch))
+            pitch_s = float(inst['pitch'] == 'high') * (pitch_s - 236.0) / 42.0 + float(inst['pitch'] == 'low') * (278.0 - pitch_s) / 42.0
+    else:
+        pitch_s = FAILED_TOKEN
+    return pitch, pitch_s
+
+
+def calculate_speed(audio, transcript, inst, language='english'):
+    speed = ((len(transcript.split(' ')) if language == 'english' else len(transcript)) * SAMPLE_RATE * 60 / len(librosa.effects.trim(audio)[0]))
     if 'speed' in inst:
-        speed_s = float((speed > 168) ^ (inst['speed'] == 'low')) if language == 'english' \
-            else float((speed > 252) ^ (inst['speed'] == 'low'))
-    return (pitch, pitch, speed), (pitch_ms, pitch_fs, speed_s)
+        if language == 'english':
+            speed_s = min(156.0, max(180.0, speed))
+            speed_s = float(inst['speed'] == 'high') * (speed_s - 156.0) / 24.0 + float(inst['pitch'] == 'low') * (180.0 - speed_s) / 24.0
+        else:
+            speed_s = min(232.0, max(272.0, speed))
+            speed_s = float(inst['speed'] == 'high') * (speed_s - 232.0) / 40.0 + float(inst['pitch'] == 'low') * (272.0 - speed_s) / 40.0
+    else:
+        speed_s = FAILED_TOKEN
+    return speed, speed_s
 
 
 def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
@@ -435,9 +465,9 @@ def text_instruction_following_verify(text_list, instruction_list):
             count = len([word for word in words if word.isalnum() or "'" in word])
             output_list.append(eval(f'float(count {inst[1]})'))
         elif inst[0] == 'start':
-            output_list.append(float(text.startswith(inst[1])))
+            output_list.append(float(text.startswith(processor.tokenizer._normalize(inst[1]))))
         elif inst[0] == 'end':
-            output_list.append(float(text.endswith(inst[1])))
+            output_list.append(float(text.endswith(processor.tokenizer._normalize(inst[1]))))
         else:
             raise NotImplementedError
     return output_list

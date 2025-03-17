@@ -1,8 +1,8 @@
 {"instruction": "Generate a powerful drum sequence.", "instrument": "drums"}
-{"instruction": "Create a haunting flute melody.", "instrument": "flute"}
-{"instruction": "Produce an expressive guitar solo.", "instrument": "guitar"}
-{"instruction": "Create a smooth saxophone improvisation.", "instrument": "saxophone"}
-{"instruction": "Produce a lively accordion tune.", "instrument": "accordion"}
+{"instruction": "Generate a haunting flute melody.", "instrument": "flute"}
+{"instruction": "Generate an expressive guitar solo.", "instrument": "guitar"}
+{"instruction": "Generate a smooth saxophone improvisation.", "instrument": "saxophone"}
+{"instruction": "Generate a lively accordion tune.", "instrument": "accordion"}
 {"instruction": "Generate a high-energy drum and bass track, 160 BPM", "tempo": 160}
 {"instruction": "Generate a groovy and funky jazz tune, 110 BPM", "tempo": 110}
 {"instruction": "Generate a cinematic orchestral buildup, 80 BPM", "tempo": 80}
