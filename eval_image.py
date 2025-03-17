@@ -524,4 +524,5 @@ class IEditObjectModify(IEdit, IObjectInclude):
 
 
 if __name__ == '__main__':
-    pass
+    a = IObjectInclude(model_name='Janus', sample_size=1)
+    # a.calculate_metrics()

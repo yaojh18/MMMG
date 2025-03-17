@@ -246,37 +246,356 @@ class Anole(Model):
             })
         return output_list
 
+class Emu3(Model):
+    def __init__(self):
+        super().__init__()
+        from emu3.mllm.processing_emu3 import Emu3Processor
+        EMU_HUB = "BAAI/Emu3-Gen"
+        VQ_HUB = "BAAI/Emu3-VisionTokenizer"
 
-class ImageAgent(Model):
-    def __init__(self, mllm='gpt-4o', diffusion='dalle3'):
-        self.mllm = mllm
-        self.diffusion = {
-            'dalle3': Dalle3(revise=False)
-        }[diffusion]
-        self.system_prompt = [{"role": "developer", "content": I_AGENT_PROMPT}]
+        self.model = AutoModelForCausalLM.from_pretrained(
+            EMU_HUB,
+            torch_dtype=torch.bfloat16,
+            attn_implementation="flash_attention_2",
+            trust_remote_code=True,
+        ).eval()
+
+        self.tokenizer = AutoTokenizer.from_pretrained(EMU_HUB, trust_remote_code=True, padding_side="left")
+        self.image_processor = AutoImageProcessor.from_pretrained(VQ_HUB, trust_remote_code=True)
+        self.image_tokenizer = AutoModel.from_pretrained(VQ_HUB, trust_remote_code=True).eval()
+        self.processor = Emu3Processor(self.image_processor, self.image_tokenizer, self.tokenizer)
+
+        self.generation_config = GenerationConfig(
+            use_cache=True,
+            eos_token_id=self.model.config.eos_token_id,
+            pad_token_id=self.model.config.pad_token_id,
+            max_new_tokens=40960,
+            do_sample=True,
+            top_k=2048,
+        )
 
     def generate(self, query_list):
-        mllm_query_list = [self.system_prompt + form_openai_mm_query(query['instruction']) for query in query_list]
-        responses = batch(query_openai, mllm_query_list, model='gpt-4o-2024-11-20', temperature=0.0)
-        diffusion_query_list = []
-        output_list = []
-        idx = 0
-        pattern = r'<image_start>(.*?)<image_end>'
-        for query, res in zip(query_list, responses):
-            image_prompts = re.findall(pattern, res)
-            for i in range(len(image_prompts)):
-                diffusion_query_list.append({'instruction': image_prompts[i]})
-                old_tag = f"<image_start>{image_prompts[i]}<image_end>"
-                new_tag = f"<image_start><image_{i}><image_end>"
-                res = res.replace(old_tag, new_tag)
-            output_list.append({
+        res_list = []
+        for query in tqdm(query_list):
+            text = query['instruction']
+            images = query.get('image_list', [])
+            inputs = self.processor(
+                text=text,
+                images=images,
+                mode='G',
+                ratio="1:1",
+                image_area=self.model.config.image_area,
+                return_tensors="pt",
+                padding="longest",
+            )
+
+            h = inputs.image_size[:, 0]
+            w = inputs.image_size[:, 1]
+            constrained_fn = self.processor.build_prefix_constrained_fn(h, w)
+            logits_processor = LogitsProcessorList([
+                PrefixConstrainedLogitsProcessor(constrained_fn, num_beams=1),
+            ])
+
+            outputs = self.model.generate(
+                inputs.input_ids.to("cuda:0"),
+                self.generation_config,
+                logits_processor=logits_processor,
+                attention_mask=inputs.attention_mask.to("cuda:0"),
+            )
+
+            decoded_outputs = self.processor.decode(outputs[0])
+            image_list = [im for im in decoded_outputs if isinstance(im, Image.Image)]
+
+            res_list.append({
                 'query': query,
-                'response': res,
-                'image_list': list(range(idx, idx + len(image_prompts))),
+                'response': ''.join([str(item) for item in decoded_outputs if not isinstance(item, Image.Image)]),
+                'image_list': image_list,
                 'audio_list': [],
             })
-            idx += len(image_prompts)
-        res_list = self.diffusion.generate(diffusion_query_list)
-        for output in output_list:
-            output['image_list'] = [res_list[i]['image_list'][0] for i in output['image_list']]
-        return output_list
+
+        return res_list
+    
+class Janus(Model):
+    def __init__(self):
+        super().__init__()
+        from janus.models import MultiModalityCausalLM, VLChatProcessor
+        self.model_path = "deepseek-ai/Janus-Pro-7B"
+        
+        self.vl_chat_processor = VLChatProcessor.from_pretrained(self.model_path)
+        self.tokenizer = self.vl_chat_processor.tokenizer
+        
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_path, trust_remote_code=True
+        ).to(torch.bfloat16).cuda().eval()
+
+    def generate(self, query_list):
+        res_list = []
+        for query in tqdm(query_list):
+            conversation = [
+                {"role": "<|User|>", "content": query['instruction']},
+                {"role": "<|Assistant|>", "content": ""},
+            ]
+            
+            sft_format = self.vl_chat_processor.apply_sft_template_for_multi_turn_prompts(
+                conversations=conversation,
+                sft_format=self.vl_chat_processor.sft_format,
+                system_prompt="",
+            )
+            prompt = sft_format + self.vl_chat_processor.image_start_tag
+
+            generated_images = self._generate_images(prompt)
+
+            res_list.append({
+                'query': query,
+                'response': IMAGE_TOKEN(0),
+                'image_list': generated_images,
+                'audio_list': [],
+            })
+
+        return res_list
+
+    @torch.inference_mode()
+    def _generate_images(self, prompt, temperature=1.0, parallel_size=16, cfg_weight=5.0, img_size=384, patch_size=16):
+        input_ids = self.vl_chat_processor.tokenizer.encode(prompt)
+        input_ids = torch.LongTensor(input_ids).cuda()
+
+        tokens = torch.zeros((parallel_size * 2, len(input_ids)), dtype=torch.int).cuda()
+        for i in range(parallel_size * 2):
+            tokens[i, :] = input_ids
+            if i % 2 != 0:
+                tokens[i, 1:-1] = self.vl_chat_processor.pad_id
+
+        inputs_embeds = self.model.language_model.get_input_embeddings()(tokens)
+
+        image_token_num_per_image = 576
+        generated_tokens = torch.zeros((parallel_size, image_token_num_per_image), dtype=torch.int).cuda()
+
+        past_key_values = None
+        for i in range(image_token_num_per_image):
+            outputs = self.model.language_model.model(
+                inputs_embeds=inputs_embeds, use_cache=True, past_key_values=past_key_values
+            )
+            hidden_states = outputs.last_hidden_state
+
+            logits = self.model.gen_head(hidden_states[:, -1, :])
+            logit_cond = logits[0::2, :]
+            logit_uncond = logits[1::2, :]
+
+            logits = logit_uncond + cfg_weight * (logit_cond - logit_uncond)
+            probs = torch.softmax(logits / temperature, dim=-1)
+
+            next_token = torch.multinomial(probs, num_samples=1)
+            generated_tokens[:, i] = next_token.squeeze(dim=-1)
+
+            next_token = torch.cat([next_token.unsqueeze(dim=1), next_token.unsqueeze(dim=1)], dim=1).view(-1)
+            img_embeds = self.model.prepare_gen_img_embeds(next_token)
+            inputs_embeds = img_embeds.unsqueeze(dim=1)
+
+            past_key_values = outputs.past_key_values
+
+        dec = self.model.gen_vision_model.decode_code(
+            generated_tokens.to(dtype=torch.int),
+            shape=[parallel_size, 8, img_size // patch_size, img_size // patch_size]
+        )
+        dec = dec.to(torch.float32).cpu().numpy().transpose(0, 2, 3, 1)
+
+        dec = np.clip((dec + 1) / 2 * 255, 0, 255).astype(np.uint8)
+        
+        os.makedirs('./output/janus/generated_images', exist_ok=True) # how should I name the path?
+        image_list = []
+        for i in range(parallel_size):
+            save_path = os.path.join('./output/janus/generated_images', f"img_{i}.jpg")
+            img = PIL.Image.fromarray(dec[i])
+            img.save(save_path)
+            image_list.append(img)
+
+        return image_list
+    
+class VilaU(Model):
+    def __init__(self, model_path="./libs/vila-u/vila-uvila-u-7b-256", vila_u_path="./libs/vila-u"):
+        super().__init__()
+        self._add_vila_u_path(vila_u_path)
+        self.model = self._load_model(model_path)
+        self.save_path = "./output/vila-u/generated_images/" # how should I name the path?
+        os.makedirs(self.save_path, exist_ok=True)
+
+    def _add_vila_u_path(self, vila_u_path): # to import vila-u from the right path
+        abs_path = os.path.abspath(vila_u_path)
+        if abs_path not in sys.path:
+            sys.path.append(abs_path)
+            
+    def _load_model(self, model_path):
+        try:
+            import vila_u
+            return vila_u.load(model_path)
+        except ImportError:
+            raise ImportError("The vila_u module is required to run this model.")
+
+    def _save_image(self, response, path):
+        """Save generated images to disk."""
+        os.makedirs(path, exist_ok=True)
+        image_list = []
+        for i in range(response.shape[0]):
+            image = response[i].permute(1, 2, 0)  # (C, H, W) -> (H, W, C)
+            image = image.cpu().numpy().astype(np.uint8)
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            save_path = os.path.join(path, f"image_{i}.png")
+            cv2.imwrite(save_path, image)
+            image_list.append(Image.open(save_path))
+        return image_list
+
+    def generate(self, query_list):
+        res_list = []
+        for query in query_list:
+            if "prompt" in query:
+                prompt = query["prompt"]
+                cfg = query.get("cfg", 3.0)
+                generation_nums = query.get("generation_nums", 1)
+
+                # image only by default, no video task
+                response = self.model.generate_image_content(prompt, cfg, generation_nums)
+                media_list = self._save_image(response, self.save_path)
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": media_list,
+                    "audio_list": [],
+                })
+            elif "query" in query:
+                text_query = query["query"]
+                image_path = query.get("image_path")
+
+                if image_path:
+                    image = self._load_image(image_path)
+                    response = self.model.generate_content([image, text_query])
+                else:
+                    raise ValueError("No visual content input!")
+
+                res_list.append({
+                    "query": query,
+                    "response": response,
+                    "image_list": [],
+                    "audio_list": [],
+                })
+            else:
+                raise ValueError("Invalid query format!")
+
+        return res_list
+
+    def _load_image(self, image_path):
+        """Load an image using the vila_u utility."""
+        try:
+            import vila_u
+            return vila_u.Image(image_path)
+        except ImportError:
+            raise ImportError("The vila_u module is required to load images.")
+
+class LaVIT(Model): # FIXME: haven't resolved the env issues
+    def __init__(self, model_path="./libs/LaVIT/models/LaVIT-7B-v2", model_dtype="bf16", device_id=0):
+        super().__init__()
+        self._add_lavit_path("./libs/LaVIT")
+
+        self.model_path = model_path
+        self.model_dtype = model_dtype
+        self.device_id = device_id
+        self.device = torch.device(f"cuda:{device_id}")
+        self.torch_dtype = torch.bfloat16 if model_dtype == "bf16" else torch.float16
+
+        seed = 0
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+
+        self.model = self._build_model()
+
+        self.ratio_dict = {
+            "1:1": (1024, 1024),
+            "4:3": (896, 1152),
+            "3:2": (832, 1216),
+            "16:9": (768, 1344),
+            "2:3": (1216, 832),
+            "3:4": (1152, 896),
+        }
+
+    def _add_lavit_path(self, lavit_path):
+        abs_path = os.path.abspath(lavit_path)
+        if abs_path not in sys.path:
+            sys.path.append(abs_path)
+
+    def _build_model(self):
+        try:
+            from models import build_model 
+            model = build_model(
+                model_path=self.model_path,
+                model_dtype=self.model_dtype,
+                check_safety=False,
+                device_id=self.device_id,
+                use_xformers=True,
+                understanding=False,
+            )
+            return model.to(self.device)
+        except ImportError:
+            raise ImportError("The LaVIT module could not be loaded. Ensure the path is correct.")
+
+    def _get_image_size(self, ratio="1:1"):
+        if ratio not in self.ratio_dict:
+            raise ValueError(f"Unsupported aspect ratio: {ratio}. Supported ratios are {list(self.ratio_dict.keys())}.")
+        return self.ratio_dict[ratio]
+
+    def generate(self, query_list):
+        res_list = []
+        for query in query_list:
+            if "prompt" in query:
+                # text-to-image
+                prompt = query["prompt"]
+                ratio = query.get("ratio", "1:1")
+                guidance_scale_for_llm = query.get("guidance_scale", 4.0)
+                num_return_images = query.get("num_return_images", 1)
+
+                height, width = self._get_image_size(ratio)
+                with torch.cuda.amp.autocast(enabled=True, dtype=self.torch_dtype):
+                    images = self.model.generate_image(
+                        prompt=prompt,
+                        width=width,
+                        height=height,
+                        guidance_scale_for_llm=guidance_scale_for_llm,
+                        num_return_images=num_return_images,
+                    )
+                image_list = [Image.fromarray(np.array(img)) for img in images]
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": image_list,
+                    "audio_list": [],
+                })
+
+            elif "input_prompts" in query:
+                # multimodal image synthesis
+                input_prompts = query["input_prompts"]
+                ratio = query.get("ratio", "1:1")
+                guidance_scale_for_llm = query.get("guidance_scale", 5.0)
+                num_return_images = query.get("num_return_images", 1)
+
+                height, width = self._get_image_size(ratio)
+                with torch.cuda.amp.autocast(enabled=True, dtype=self.torch_dtype):
+                    images = self.model.multimodal_synthesis(
+                        input_prompts=input_prompts,
+                        width=width,
+                        height=height,
+                        guidance_scale_for_llm=guidance_scale_for_llm,
+                        num_return_images=num_return_images,
+                    )
+                image_list = [Image.fromarray(np.array(img)) for img in images]
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": image_list,
+                    "audio_list": [],
+                })
+            else:
+                raise ValueError("Invalid query format!")
+
+        return res_list
