@@ -12,6 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from urllib.request import urlopen
 from tqdm import tqdm
 from PIL import Image
 from io import BytesIO

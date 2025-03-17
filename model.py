@@ -4,7 +4,9 @@ import re
 import shutil
 import subprocess
 from abc import abstractmethod
-from transformers import MusicgenForConditionalGeneration
+from transformers import MusicgenForConditionalGeneration, Qwen2AudioForConditionalGeneration
+from diffusers import DiffusionPipeline
+
 
 from prompt import I_AGENT_PROMPT
 from utils import *
@@ -600,3 +602,107 @@ class LaVIT(Model): # FIXME: haven't resolved the env issues
                 raise ValueError("Invalid query format!")
 
         return res_list
+    
+class QwenAudio(Model): # Qwen2-Audio-7B 
+    def __init__(self):
+        super().__init__()
+        self.model = Qwen2AudioForConditionalGeneration.from_pretrained(
+            "Qwen/Qwen2-Audio-7B", trust_remote_code=True
+        )
+        self.processor = AutoProcessor.from_pretrained(
+            "Qwen/Qwen2-Audio-7B", trust_remote_code=True
+        )
+        self.sample_rate = self.processor.feature_extractor.sampling_rate
+        
+    def generate(self, query_list):
+        res_list = []
+        for query in query_list:
+            instruction = query['instruction']            
+            audio_signal = None
+            if 'audio_url' in query:
+                url = query['audio_url']
+                audio_signal, _ = librosa.load(
+                    BytesIO(urlopen(url).read()), sr=self.sample_rate
+                )
+            elif 'audio_list' in query and query['audio_list']:
+                audio_signal, _ = librosa.load(query['audio_list'][0], sr=self.sample_rate)
+
+            prompt = f"<|audio_bos|><|AUDIO|><|audio_eos|>{instruction}"
+            
+            inputs = self.processor(
+                text=prompt,
+                audios=audio_signal if audio_signal is not None else None,
+                return_tensors="pt"
+            )
+            generated_ids = self.model.generate(**inputs, max_length=256)
+            generated_ids = generated_ids[:, inputs.input_ids.size(1):]
+            response_text = self.processor.batch_decode(
+                generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0]
+
+            res_list.append({
+                'query': instruction,
+                'response': AUDIO_TOKEN(0) + response_text,
+                'image_list': [],
+                'audio_list': [audio_signal] if audio_signal is not None else [],
+            })
+
+        return res_list
+
+# TODO: import the module _image_to_audio from riffusiom/cli.py
+class Riffusion(Model):
+    def __init__(self):
+        self.model = DiffusionPipeline.from_pretrained("riffusion/riffusion-model-v1").to('cuda')
+        self.sample_rate = 44100
+
+    def generate(self, query_list):
+        query_list = [query['instruction'][9:] for query in query_list]
+        output_list = []
+
+        for query in tqdm(query_list, desc="Generating audio"):
+            # spectrogram image
+            image = self.model(prompt=query).images[0]
+            audio_signal = self._image_to_audio(image)
+
+            audio_signal = librosa.resample(
+                audio_signal,
+                orig_sr=self.sample_rate,
+                target_sr=SAMPLE_RATE
+            )
+            output_list.append(audio_signal)
+        
+        res_list = []
+        for query, output in zip(query_list, output_list):
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),  
+                'image_list': [],     
+                'audio_list': [output],  
+            })
+
+        return res_list
+
+    def _image_to_audio(*, image: str, audio: str, device: str = "cuda"):
+        """
+        Reconstruct an audio clip from a spectrogram image.
+        """
+        pil_image = Image.open(image)
+
+        # Get parameters from image exif
+        img_exif = pil_image.getexif()
+        assert img_exif is not None
+
+        try:
+            params = SpectrogramParams.from_exif(exif=img_exif)
+        except (KeyError, AttributeError):
+            print("WARNING: Could not find spectrogram parameters in exif data. Using defaults.")
+            params = SpectrogramParams()
+
+        converter = SpectrogramImageConverter(params=params, device=device)
+        segment = converter.audio_from_spectrogram_image(pil_image)
+
+        extension = Path(audio).suffix[1:]
+        segment.export(audio, format=extension)
+
+        print(f"Wrote {audio} ({segment.duration_seconds:.2f} seconds)")
+
