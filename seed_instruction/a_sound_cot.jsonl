@@ -1,20 +1,10 @@
-{"instruction": "Generate the sound of a black bird often associated with death or misfortune.", "target": "crow"}
-{"instruction": "Generate the sound of a small domesticated animal known for its agility and a tendency to purr when content.", "target": "cat"}
-{"instruction": "Generate the sound of a domesticated animal known for its loyalty and often referred to as \"man's best friend\".", "target": "dog"}
-{"instruction": "Generate the sound of a large domesticated animal known for producing milk and being sacred in Hinduizm.", "target": "cow"}
-{"instruction": "Generate the sound of a small amphibian with a life cycle that includes a tadpole stage.", "target": "frog"}
-{"instruction": "Generate the sound of a domesticated farm animal known for its pink skin and distinctive snout used for rooting in the ground.", "target": "pig"}
-{"instruction": "Generate the sound of a male farm bird known for its loud sound at dawn and vibrant red comb.", "target": "rooster"}
-{"instruction": "Generate the sound of a female farm bird known for laying eggs and having a comb on its head.", "target": "hen"}
-{"instruction": "Generate the sound of a flying vehicle invented by Wright brothers.", "target": "airplane"}
-{"instruction": "Generate the sound of a small amphibian featured in Grimm's Fairy Tales as a creature that transforms into a prince with a kiss.", "target": "frog"}
-{"instruction": "Generate the sound of a motherly farm bird that is also a symbol of nurturing care.", "target": "hen"}
-{"instruction": "Generate the sound of loud audible device installed in cars, used to alert others or signal warnings, and activated by pressing a button on the steering wheel.", "target": "car horn"}
-{"instruction": "Generate the sound of involuntary bodily reflex that forcefully expels air from the lungs aimed to clear the throat.", "target": "coughing"}
-{"instruction": "Generate the sound of a small arthropod animal that has six legs and generally one or two pairs of wings.", "target": "insects"}
-{"instruction": "Generate the sound of a small domesticated animal mythically said to have nine lives.", "target": "cat"}
-{"instruction": "Generate the sound of a domesticated animal known for chasing its tail, fetching balls or burying bones in the ground.", "target": "dog"}
-{"instruction": "Generate the sound of a black bird that mimics sounds and is a symbol of intelligence in folklore.", "target": "crow"}
-{"instruction": "Generate the sound of a large domesticated animal that is the primary source of dairy products.", "target": "cow"}
-{"instruction": "Generate the sound of a domesticated farm animal that is the last animal in Chinese Zodiac.", "target": "pig"}
-{"instruction": "Generate the sound of a male farm bird that wakes people up and is a national symbol of France.", "target": "rooster"}
+{"instruction": "Generate the sound of a black bird often associated with death or misfortune.", "instruction_new": "Generate the sound of a black bird that mimics sounds and is a symbol of intelligence in folklore.", "target": "crow"}
+{"instruction": "Generate the sound of a small domesticated animal known for its agility and a tendency to purr when content.", "instruction_new": "Generate the sound of a small domesticated animal mythically said to have nine lives.", "target": "cat"}
+{"instruction": "Generate the sound of a domesticated animal known for its loyalty and often referred to as \"man's best friend\".", "instruction_new":  "Generate the sound of a domesticated animal known for chasing its tail, fetching balls or burying bones in the ground.", "target": "dog"}
+{"instruction": "Generate the sound of a large domesticated animal known for producing milk and being sacred in Hinduizm.", "instruction_new": "Generate the sound of a large domesticated animal that is the primary source of dairy products.", "target": "cow"}
+{"instruction": "Generate the sound of a small amphibian with a life cycle that includes a tadpole stage.", "instruction_new": "Generate the sound of a small amphibian featured in Grimm's Fairy Tales as a creature that transforms into a prince with a kiss.", "target": "frog"}
+{"instruction": "Generate the sound of a domesticated farm animal known for its pink skin and distinctive snout used for rooting in the ground.", "instruction_new": "Generate the sound of a domesticated farm animal that is the last animal in Chinese Zodiac.", "target": "pig"}
+{"instruction": "Generate the sound of a male farm bird known for its loud sound at dawn and vibrant red comb.", "instruction_new": "Generate the sound of a male farm bird that wakes people up and is a national symbol of France.", "target": "rooster"}
+{"instruction": "Generate the sound of a female farm bird known for laying eggs and having a comb on its head.", "instruction_new": "Generate the sound of a motherly farm bird that is also a symbol of nurturing care.", "target": "hen"}
+{"instruction": "Generate the sound of a flying vehicle invented by Wright brothers.", "instruction_new":  "Generate the sound of vehicle leaves contrails in the sky.", "target": "airplane"}
+{"instruction": "Generate the sound of a small arthropod animal that has six legs and generally one or two pairs of wings.", "instruction_new": "Generate the sound of a small arthropod animal that communicates using antennae and has compound eyes.", "target": "insects"}

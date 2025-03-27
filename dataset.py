@@ -1,11 +1,14 @@
 import os
 import json
 import random
+import shutil
+
+import librosa
+import soundfile as sf
+import matplotlib.pyplot as plt
+import pandas as pd
 from datasets import load_dataset
 from PIL import Image, ImageDraw
-import gradio as gr
-from gradio_image_prompter import ImagePrompter
-import matplotlib.pyplot as plt
 
 from interface import LabelBBoxInterface
 
@@ -110,10 +113,48 @@ def reindex_image_editing_instruction():
             image.save(output_path + f'image/i_edit_{name_translator[task]}_{idx}.png')
 
 
+def sample_from_isg_bench():
+    data_list = []
+    with open(f'./datasets/ISG-Bench/ISG-Bench.jsonl', 'r', encoding='utf-8') as file:
+        for line in file:
+            data = json.loads(line.strip())
+            if data['Category'] == '3D_object':
+                data_list.append(json.loads(line.strip()))
+    json_list = []
+    idx = 0
+    for data in data_list[:20]:
+        order = ['60 degrees left', '30 degrees left', '30 degrees right', '60 degrees right']
+        idxs = random.sample(list(range(4)), 4)
+        json_list.append({
+            'instruction': 'Use the given image as the reference angle and generate four additional images of the object from the following angels in order: ' + ', '.join([order[i] for i in idxs]) + '.',
+            'image_list': [idx],
+            'ref_image_list': list(range(idx + 1, idx + 5)),
+        })
+        image = Image.open('./datasets/ISG-Bench/' + data['Query'][1]['content'])
+        image.save(f'./seed_instruction/image/i_consistency_3d_{idx}.png')
+        for i, j in enumerate(idxs):
+            image = Image.open('./datasets/ISG-Bench/' + data['Golden'][j * 2 + 1]['content'])
+            image.save(f'./seed_instruction/image/i_consistency_3d_{idx + i + 1}.png')
+        idx += 5
+    with open('./seed_instruction/i_consistency_3d.jsonl', 'w', encoding='utf-8') as file:
+        for data in json_list:
+            file.write(json.dumps(data) + '\n')
+
+def sample_from_openmic():
+    df = pd.read_csv('./datasets/temp/openmic-2018-v1.0.0/openmic-2018/openmic-2018-aggregated-labels.csv')
+    df = df[df['relevance'] == 1]
+    id_counts = df['sample_key'].value_counts()
+    unique_instruments = id_counts[id_counts == 1].index
+    df = df[df['sample_key'].isin(unique_instruments)]
+    instrument_list = ['banjo', 'bass', 'cello', 'clarinet', 'cymbals', 'mandolin', 'trombone', 'trumpet', 'ukulele', 'violin']
+    df = df[df['instrument'].isin(instrument_list)]
+    df = df.groupby('instrument')
+    for instrument_name, group_data in df:
+        os.makedirs(f'./datasets/openmic-2018/{instrument_name}/', exist_ok=True)
+        for idx, (_, row) in enumerate(group_data.iterrows()):
+            shutil.copy(f"./datasets/temp/openmic-2018-v1.0.0/openmic-2018/mp3/audio/{row['sample_key']}.mp3",
+                        f'./datasets/openmic-2018/{instrument_name}/{idx}.mp3')
+
+
 if __name__ == '__main__':
-    demo = gr.Interface(
-        lambda prompts: (prompts["image"], prompts["points"]),
-        ImagePrompter(show_label=False),
-        [gr.Image(show_label=False), gr.Dataframe(label="Points")],
-    )
-    demo.launch()
+    pass

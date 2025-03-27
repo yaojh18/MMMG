@@ -1,4 +1,6 @@
 import json
+
+import numpy as np
 import torchaudio
 
 from model import *
@@ -82,15 +84,14 @@ class EvalUnit:
                 image.save(output_path + f'image/{self.inst_name}_{idx}.png')
         if save_all:
             for idx, audio in enumerate(audio_list):
-                if isinstance(audio, torch.Tensor):
-                    torchaudio.save(output_path + f'audio/{self.inst_name}_{idx}.wav', audio, SAMPLE_RATE)
-                else:
-                    sf.write(output_path + f'audio/{self.inst_name}_{idx}.wav', audio, SAMPLE_RATE)
+                sf.write(output_path + f'audio/{self.inst_name}_{idx}.wav', audio, SAMPLE_RATE)
 
     def load_inst_mm(self):
         for inst in self.inst_list:
             if 'image_list' in inst:
                 inst['image_list'] = [Image.open(f'./seed_instruction/image/{self.inst_name}_{idx}.png') for idx in inst['image_list']]
+            if 'ref_image_list' in inst:
+                inst['ref_image_list'] = [Image.open(f'./seed_instruction/image/{self.inst_name}_{idx}.png') for idx in inst['ref_image_list']]
             if 'audio_list' in inst:
                 inst['audio_list'] = [librosa.load(f'./seed_instruction/audio/{self.inst_name}_{idx}.wav')[0] for idx in inst['audio_list']]
 

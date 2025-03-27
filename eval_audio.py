@@ -16,11 +16,19 @@ class ASound(EvalUnit):
     def evaluate(self):
         audio_list, label_list, human_eval_res_list, idx_list = self._evaluate()
 
-        # CLAPScore audio-text
-        scores = compute_clapscore_at(audio_list, label_list)
-        for idx, data in enumerate(self.res_list):
-            data['clapscore_at'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        self.save()
+        # # CLAPScore audio-text
+        # scores = compute_clapscore_at(audio_list, label_list)
+        # for idx, data in enumerate(self.res_list):
+        #     data['model_eval'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        # self.save()
+
+        # # Gemini-2.0
+        # query_list = [form_gemini_mm_query(f"Is the given audio the sound of {l}? Answer only yes or no.", audios=[a])
+        #               for a, l in zip(audio_list, label_list)]
+        # responses = batch(query_gemini, query_list, model='gemini-2.0-flash-exp', temperature=0.0, num_worker=1)
+        # for idx, data in enumerate(self.res_list):
+        #     data['model_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        # self.save()
 
         # CLAPScore audio-audio
         ref_audio_map = pd.read_csv('./datasets/ESC-50/dataset.csv')
@@ -35,9 +43,11 @@ class ASound(EvalUnit):
                 ref_audio_list.append(ref_audio)
             scores.append(compute_clapscore_aa(audio, ref_audio_list))
         for idx, data in enumerate(self.res_list):
-            data['clapscore_aa'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+            data['model_eval'] = [scores[i] if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         self.save()
 
+    def human_evaluate(self):
+        audio_list, label_list, human_eval_res_list, idx_list = self._evaluate()
         interface = MultiLabelInterface(
             label_list=['Yes', 'No'],
             eval_inst_list=[f"Is the given audio about {label}?" for label in label_list],
@@ -49,22 +59,14 @@ class ASound(EvalUnit):
             data['human_eval'] = [1.0 - float(interface.eval_list[i]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         self.save()
 
-        # Gemini-2.0
-        query_list = [form_gemini_mm_query(f"Is the given audio the sound of {l}? Answer only yes or no.", audios=[a])
-                      for a, l in zip(audio_list, label_list)]
-        responses = batch(query_gemini, query_list, model='gemini-2.0-flash-exp', temperature=0.0, num_worker=1)
-        for idx, data in enumerate(self.res_list):
-            data['gemini_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
-        self.save()
-
-    def calculate_metrics(self, method='clapscore_aa', threshold=0.6):
-        model_eval_list = [res[method] for res in self.res_list]
+    def calculate_metrics(self, threshold=0.6):
+        model_eval_list = [res['model_eval'] for res in self.res_list]
         human_eval_list = [res['human_eval'] for res in self.res_list]
 
-        # Optimal threshold
-        model_eval_cat = list(itertools.chain(*model_eval_list))
-        human_eval_cat = list(itertools.chain(*human_eval_list))
-        threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
+        # # Optimal threshold
+        # model_eval_cat = list(itertools.chain(*model_eval_list))
+        # human_eval_cat = list(itertools.chain(*human_eval_list))
+        # threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
 
         model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
         human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
@@ -160,7 +162,7 @@ class ASpeechAttribute(EvalUnit):
     inst_name = 'a_speech_attribute'
     language = 'english'
 
-    def evaluate(self, attribute_list=('gender', 'pitch', 'pitch', 'speed')):
+    def evaluate(self):
         transcripts, wers = transcribe_speech(
             [data['audio_list'][0] for data in self.res_list],
             [inst['text'] for inst in self.inst_list],
@@ -183,14 +185,20 @@ class ASpeechAttribute(EvalUnit):
         self.save()
 
         for data, inst in zip(self.res_list, self.inst_list):
-            analysis, analysis_score = calculate_pitch_and_speed(
-                data['audio_list'][0], data['model_eval'][0], data['transcript'], inst, self.language
-            )
-            data['model_eval'][1:] = analysis
-            data['model_eval_score'][1:] = analysis_score
+            pitch, pitch_s = calculate_pitch(data['audio_list'][0], data['model_eval'][0], inst)
+            if data['model_eval'][0] == 0:
+                data['model_eval'][1] = pitch
+                data['model_eval_score'][1] = pitch_s
+            else:
+                data['model_eval'][2] = pitch
+                data['model_eval_score'][2] = pitch_s
+            speed, speed_s = calculate_speed(data['audio_list'][0], data['transcript'], inst, self.language)
+            data['model_eval'][3] = speed
+            data['model_eval_score'][3] = speed_s
         self.save()
 
-        option_list = (('male', 'female'), ('low', 'medium', 'high'), ('low', 'medium', 'high'), ('low', 'high'))
+    def human_evaluate(self, attribute_list=('gender', 'pitch', 'pitch', 'speed')):
+        option_list = (('male', 'female'), ('low', 'medium', 'high'), ('low', 'medium', 'high'), ('low', 'medium', 'high'))
         question_list = (
             'Is the given speech in male or female voice? Please compare between difference speeches to have a better calibration.',
             'Is the given speech in low or high pitch? Please compare between difference speeches to have a better calibration.',
@@ -247,7 +255,7 @@ class ASpeechAttribute(EvalUnit):
                     if find_threshold:
                         model_eval_list.append(data['model_eval'][i])
                     else:
-                        model_eval_list.append(data['model_eval_score'][i])
+                        model_eval_list.append(float(data['model_eval_score'][i] > 0.0))
                     human_eval_list.append(data['human_eval_score'][i])
                     target_list.append(inst[task])
                     label_list.append(data['human_eval'][i])
@@ -268,7 +276,7 @@ class ASpeechAttribute(EvalUnit):
             print(f"Pearson Correlation of {task} for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
             print(f"Agreement of {task} for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
 
-        model_eval_list = [np.min([me for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
+        model_eval_list = [np.min([float(me > 0.0) for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
         human_eval_list = [np.min([me for me in data['human_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
         print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
         print(f"Human evaluated accuracy for {self.inst_name}: ", np.mean(human_eval_list))
@@ -302,6 +310,8 @@ class ASpeechImitate(EvalUnit):
             data['model_eval'] = sim
         self.save()
 
+    def human_evaluate(self):
+        ref_audio_list = [inst['audio_list'][0] for inst in self.inst_list]
         interface = MultiLabelInterface(
             label_list=('Yes', 'No'),
             eval_inst_list=['Are the speeches coming from the same speaker?'] * len(self.res_list),
@@ -383,6 +393,39 @@ class AMusicAttribute(EvalUnit):
             data['model_eval_score'] = float(data['model_eval'] > 0.58)
         self.save()
 
+    def evaluate_tempo(self):
+        res_list = []
+        inst_list = []
+        for data, inst in zip(self.res_list, self.inst_list):
+            if 'tempo' in inst:
+                res_list.append(data)
+                inst_list.append(inst)
+        if len(inst_list) == 0:
+            return
+
+        from beat_this.inference import Audio2Beats
+        model = Audio2Beats(checkpoint_path="final0", device="cuda", dbn=False)
+        for data, inst in zip(res_list, inst_list):
+            audio = librosa.effects.trim(data['audio_list'][0])[0]
+            beats, _ = model(audio, SAMPLE_RATE)
+            bpm = len(beats) * SAMPLE_RATE * 60 / audio.shape[0]
+            data['auto_eval'] = bpm
+            data['auto_eval_score'] = float(abs(inst['tempo'] - bpm) < 5)
+        self.save()
+
+    def evaluate(self, attribute_list=('genre', 'instrument')):
+        self.evaluate_instrument()
+        self.evaluate_tempo()
+
+    def human_evaluate(self):
+        res_list = []
+        inst_list = []
+        for data, inst in zip(self.res_list, self.inst_list):
+            if 'instrument' in inst:
+                res_list.append(data)
+                inst_list.append(inst)
+        if len(inst_list) == 0:
+            return
         instruments = tuple(set(inst['instrument'] for inst in inst_list)) + ('None of the above',)
         back_list = []
         for instrument in instruments[: -1]:
@@ -408,30 +451,6 @@ class AMusicAttribute(EvalUnit):
             data['human_eval'] = [instruments[he] for he in human_eval]
             data['human_eval_score'] = float(inst['instrument'] in data['human_eval'])
         self.save()
-
-    def evaluate_tempo(self):
-        res_list = []
-        inst_list = []
-        for data, inst in zip(self.res_list, self.inst_list):
-            if 'tempo' in inst:
-                res_list.append(data)
-                inst_list.append(inst)
-        if len(inst_list) == 0:
-            return
-
-        from beat_this.inference import Audio2Beats
-        model = Audio2Beats(checkpoint_path="final0", device="cuda", dbn=False)
-        for data, inst in zip(res_list, inst_list):
-            audio = librosa.effects.trim(data['audio_list'][0])[0]
-            beats, _ = model(audio, SAMPLE_RATE)
-            bpm = len(beats) * SAMPLE_RATE * 60 / audio.shape[0]
-            data['auto_eval'] = bpm
-            data['auto_eval_score'] = float(abs(inst['tempo'] - bpm) < 5)
-        self.save()
-
-    def evaluate(self, attribute_list=('genre', 'instrument')):
-        self.evaluate_instrument()
-        self.evaluate_tempo()
 
     def calculate_metrics(self):
         model_eval_list = [data['model_eval_score'] for data in self.res_list if 'model_eval_score' in data]
@@ -501,6 +520,7 @@ class AMusicExclude(EvalUnit):
             data['model_eval_score'] = float(data['model_eval'] < 0.585)
         self.save()
 
+    def human_evaluate(self):
         instruments = tuple(set(inst['instrument'] for inst in self.inst_list)) + ('None of the above',)
         back_list = []
         for instrument in instruments[: -1]:
