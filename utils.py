@@ -5,12 +5,15 @@ import collections
 import re
 import librosa
 import evaluate
+import json
 import numpy as np
 import soundfile as sf
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from google import genai
+from google.genai import types
 from tqdm import tqdm
 from PIL import Image
 from io import BytesIO
@@ -42,7 +45,7 @@ letter2idx = {
 }
 
 
-def batch(func_name: Callable, data_list, num_worker=4, **kwargs):
+def batch(func_name: Callable, data_list, num_worker=8, **kwargs):
     with ProcessPoolExecutor(max_workers=num_worker) as executor:
         futures = [executor.submit(func_name, index, data, **kwargs) for index, data in enumerate(data_list)]
         res_dict = collections.defaultdict(None)
@@ -145,15 +148,19 @@ def query_openai(index, prompt, model, temperature, dtype='gpt'):
 
 
 def query_gemini(index, query, model, temperature):
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel(model_name=model, generation_config=genai.GenerationConfig(temperature=temperature, top_p=1.0))
+    client = genai.Client(api_key=GEMINI_KEY)
     retry_count = 10
     retry_interval = 1
 
     for _ in range(retry_count):
         try:
-            result = model.generate_content(query)
+            result = client.models.generate_content(
+                model=model, contents=query,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                    top_p=1.0
+                )
+            )
             return index, result.text
         except Exception as e:
             print("Error info: ", e)
@@ -170,6 +177,7 @@ def calculate_ssim(img1, img2):
     img1 = np.array(img1)
     img2 = np.array(img2)
     return ssim(img1, img2, channel_axis=-1)
+
 
 dreamsim_model = None
 def calculate_dreamsim(img1, img2):
@@ -241,7 +249,6 @@ def symmetry_condition(image: Image.Image, condition: str):
         ref_image = image.transpose(Image.FLIP_LEFT_RIGHT)
     else:
         raise NotImplementedError
-
     return calculate_ssim(image, ref_image)
 
 
@@ -356,7 +363,7 @@ def transcribe_speech(audio_list, text_list=None, language='english'):
     return trans_list, wer_list
 
 
-def calculate_pitch(audio, gender, inst):
+def calculate_pitch(audio, gender=None, inst=''):
     import parselmouth
 
     def extract_pitch(audio, hop_size=256, f0_min=80, f0_max=600, num_bins=100):
@@ -404,7 +411,7 @@ def calculate_pitch(audio, gender, inst):
     return pitch, pitch_s
 
 
-def calculate_speed(audio, transcript, inst, language='english'):
+def calculate_speed(audio, transcript, inst='', language='english'):
     speed = ((len(transcript.split(' ')) if language == 'english' else len(transcript)) * SAMPLE_RATE * 60 / len(librosa.effects.trim(audio)[0]))
     if 'speed' in inst:
         if language == 'english':
@@ -416,6 +423,12 @@ def calculate_speed(audio, transcript, inst, language='english'):
     else:
         speed_s = FAILED_TOKEN
     return speed, speed_s
+
+
+def calculate_volume(audio):
+    audio = librosa.effects.trim(audio)[0]
+    rms = librosa.feature.rms(y=audio)[0]
+    return float(np.mean(rms))
 
 
 def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
@@ -471,3 +484,27 @@ def text_instruction_following_verify(text_list, instruction_list):
         else:
             raise NotImplementedError
     return output_list
+
+
+def extract_json(text):
+    match = re.search(r'\{.*}', text, re.DOTALL)
+    if match:
+        json_str = match.group(0)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            cleaned = re.sub(r'\s+', ' ', json_str).strip()
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+def extract_list(text):
+    match = re.search(r'\[.*]?', text)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return []
+    return []

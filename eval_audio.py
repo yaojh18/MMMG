@@ -197,91 +197,10 @@ class ASpeechAttribute(EvalUnit):
             data['model_eval_score'][3] = speed_s
         self.save()
 
-    def human_evaluate(self, attribute_list=('gender', 'pitch', 'pitch', 'speed')):
-        option_list = (('male', 'female'), ('low', 'medium', 'high'), ('low', 'medium', 'high'), ('low', 'medium', 'high'))
-        question_list = (
-            'Is the given speech in male or female voice? Please compare between difference speeches to have a better calibration.',
-            'Is the given speech in low or high pitch? Please compare between difference speeches to have a better calibration.',
-            'Is the given speech in low or high pitch? Please compare between difference speeches to have a better calibration.',
-            'Is the given speech in low or high speaking rate? Please compare between difference speeches to have a better calibration.',
-        )
-        for data in self.res_list:
-            data['human_eval'] = [data['human_eval'][0], FAILED_TOKEN, FAILED_TOKEN, data['human_eval'][3]]
-            data['human_eval_score'] = [data['human_eval_score'][0], FAILED_TOKEN, FAILED_TOKEN, data['human_eval_score'][3]]
-        for i in range(len(attribute_list)):
-            if attribute_list[i] == FAILED_TOKEN:
-                continue
-            idx = 0
-            data_list = []
-            for data, inst in zip(self.res_list, self.inst_list):
-                if attribute_list[i] in inst:
-                    if attribute_list[i] == 'pitch' and data['human_eval'][0] != i - 1:
-                        continue
-                    data['human_eval'][i] = idx
-                    data['human_eval_score'][i] = idx
-                    data_list.append(data['audio_list'][0])
-                    idx += 1
-                else:
-                    data['human_eval'][i] = FAILED_TOKEN
-                    data['human_eval_score'][i] = FAILED_TOKEN
-            interface = CalibratedLabelInterface(
-                label_list=option_list[i],
-                eval_inst=question_list[i],
-                data_list=data_list,
-            )
-            interface.start()
-            for data, inst in zip(self.res_list, self.inst_list):
-                if data['human_eval'][i] != FAILED_TOKEN:
-                    if interface.eval_list[data['human_eval'][i]] == FAILED_TOKEN:
-                        data['human_eval'][i] = FAILED_TOKEN
-                        data['human_eval_score'][i] = FAILED_TOKEN
-                    else:
-                        data['human_eval'][i] = interface.eval_list[data['human_eval'][i]]
-                        data['human_eval_score'][i] = float(option_list[i][data['human_eval'][i]] in (inst[attribute_list[i]], 'medium'))
-            self.save()
-
-    def calculate_metrics(self, find_threshold=False):
+    def calculate_metrics(self):
         print(f'Word Error Rate for {self.inst_name}: ', np.mean([data['wer'] for data in self.res_list]))
-        option_list = [('male', 'female'), ('low', 'medium', 'high'), ('low', 'medium', 'high'), ('low', 'high')]
-        for i, task in enumerate(('gender', 'pitch', 'pitch', 'speed')):
-            model_eval_list = []
-            label_list = []
-            target_list = []
-            human_eval_list = []
-            for data, inst in zip(self.res_list, self.inst_list):
-                if data['human_eval'][i] != FAILED_TOKEN:
-                    if task == 'pitch' and (data['human_eval'][0] != i - 1 or data['model_eval_score'][i] == FAILED_TOKEN):
-                        continue
-                    if find_threshold:
-                        model_eval_list.append(data['model_eval'][i])
-                    else:
-                        model_eval_list.append(float(data['model_eval_score'][i] > 0.0))
-                    human_eval_list.append(data['human_eval_score'][i])
-                    target_list.append(inst[task])
-                    label_list.append(data['human_eval'][i])
-            # plt.hist(model_eval_list, bins=10, edgecolor='black', alpha=0.7)
-            # plt.show()
-            if find_threshold:
-                if task != 'pitch':
-                    thres = find_optimal_threshold(model_eval_list, label_list)
-                    model_eval_list = [int(me > thres) for me in model_eval_list]
-                    model_eval_list = [float(option_list[i][me] == tar) for me, tar in zip(model_eval_list, target_list)]
-                else:
-                    low, high = find_optimal_thresholds(model_eval_list, label_list)
-                    model_eval_list = [0 if me < low else (2 if me > high else 1) for me in model_eval_list]
-                    model_eval_list = [float(option_list[i][me] in (tar, 'medium')) for me, tar in zip(model_eval_list, target_list)]
-
-            print(f"Model evaluated {task} accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-            print(f"Human evaluated {task} accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-            print(f"Pearson Correlation of {task} for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-            print(f"Agreement of {task} for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
-
-        model_eval_list = [np.min([float(me > 0.0) for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
-        human_eval_list = [np.min([me for me in data['human_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
+        model_eval_list = [np.min([me for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
         print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluated accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Pearson Correlation of for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement of for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
 
 
 class ASpeechChinese(ASpeechAttribute):
@@ -549,16 +468,6 @@ class AMusicExclude(EvalUnit):
         print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
         print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
 
-
-class AMusicLyrics(EvalUnit):
-    # TODO
-    inst_name = 'a_music_lyrics'
-
-    def evaluate(self):
-        pass
-
-    def calculate_metrics(self):
-        pass
 
 
 if __name__ == '__main__':

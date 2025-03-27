@@ -31,36 +31,10 @@ class Model:
 # --------------------------- Below are tool models, can not be directly used for deployment -------------------------- #
 
 class VoxInstruct(Model):
-    def __init__(self):
-        self.mllm_prompt = ('###Instrution:\n Your task is to generate a speech transcript based on a user\'s prompt. '
-                            'The prompt is either generating a new transcript or modifying the original speech transcript (given in speech audio) to meet the format requirement. '
-                            'You should output ONLY the final generated or modified transcript, omitting your thinking process.'
-                            'Make sure you strictly follow the user\'s prompt. Your final answer should be always within 50 words whatever the user\'s prompt is.\n'
-                            '### User\'s prompt:\n')
-        self.mllm = 'gemini-1.5-pro'
-
     def generate(self, query_list, language='english'):
         """
         This model does not require a formated output list, thus can only be used for intermediate results.
         """
-        # transcript_list = None
-        # if not any(['audio_list' in query for query in query_list]):
-        #     input_list = [f"{idx}|{0 if language == 'english' else 1}|{query[21:]}|\n" for idx, query in enumerate(query_list)]
-        # else:
-        #     if query_list[0]['instruction'].startswith('Read'):
-        #         input_list = []
-        #         for idx, query in enumerate(query_list):
-        #             text = re.search(r'"(.*)"', query['instruction']).group(1)
-        #             shutil.copy(query['audio_list'][0], f'./models/VoxInstruct/input/{idx}.wav')
-        #             input_list.append(f'{idx}|0|\"{query["text_list"][0]} {text}\"|./input/{idx}.wav\n')
-        #     else:
-        #         audio_list = [[librosa.load(query['audio_list'][0])[0]] if query['audio_list'] else [] for query in query_list]
-        #         mllm_query_list = [form_gemini_mm_query(self.mllm_prompt + query['instruction'], audios=audio)
-        #                            for query, audio in zip(query_list, audio_list)]
-        #         transcript_list = batch(query_gemini, data_list=mllm_query_list, model=self.mllm, temperature=0.0)
-        #         input_list = []
-        #         for idx, (query, transcript) in enumerate(zip(query_list, transcript_list)):
-        #             input_list.append(f'{idx}|0|Read \"{transcript.strip()}\" in a common voice.|\n')
         input_list = []
         for idx, query in enumerate(query_list):
             if query['reference'] != '':
@@ -266,6 +240,7 @@ class AudioAgent(Model):
         audio_pattern = r'<[\s/]*audio_type="(sound|speech|music)"[\s/]*><[\s/]*audio_text="(.*?)"[\s/]*><[\s/]*audio_style=(?:"(.*?)"|(\d+)|(#\d+))[\s/]*>'
         for query, res in zip(query_list, responses):
             audio_prompts = re.findall(pattern, res)
+            res = res.replace("</audio_end>", "<audio_end>")
             audio_list = []
             for i in range(len(audio_prompts)):
                 audio_prompt = re.match(audio_pattern, audio_prompts[i])
@@ -296,9 +271,7 @@ class AudioAgent(Model):
                 else:
                     audio_list.append(FAILED_TOKEN)
                     continue
-                old_tag = f"<audio_start>{audio_prompts[i]}<audio_end>"
-                new_tag = f"<audio_start><audio_{i}><audio_end>"
-                res = res.replace(old_tag, new_tag)
+                res = res.replace(audio_prompts[i], f"<audio_{i}>")
             output_list.append({
                 'query': query,
                 'response': res,
@@ -367,11 +340,10 @@ class ImageAgent(Model):
         pattern = r'<image_start>(.*?)</?image_end>'
         for query, res in zip(query_list, responses):
             image_prompts = re.findall(pattern, res)
+            res = res.replace("</image_end>", "<image_end>")
             for i in range(len(image_prompts)):
                 diffusion_query_list.append({'instruction': image_prompts[i]})
-                old_tag = f"<image_start>{image_prompts[i]}<image_end>"
-                new_tag = f"<image_start><image_{i}><image_end>"
-                res = res.replace(old_tag, new_tag)
+                res = res.replace(image_prompts[i], f"<image_{i}>")
             output_list.append({
                 'query': query,
                 'response': res,

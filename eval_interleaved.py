@@ -1,8 +1,10 @@
 import itertools
+import re
 
 from eval import EvalUnit
 from prompt import *
 from interface import *
+from eval_image import IOCR
 
 
 class IConsistencySemantic(EvalUnit):
@@ -18,13 +20,27 @@ class IConsistencySemantic(EvalUnit):
             else:
                 data['model_eval'] = []
             for image, target in zip(data['image_list'], inst['object']):
-                query_list.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(target), images=[image]))
+                if 'compose' in self.inst_name:
+                    query_list.append(form_openai_mm_query(
+                        IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(target),
+                        images=[image]
+                    ))
+                else:
+                    query_list.append(form_openai_mm_query(
+                        IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(target),
+                        images=[image]
+                    ))
                 data['model_eval'].append(idx)
                 idx += 1
 
         responses = batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
         for data in self.res_list:
-            data['model_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in data['model_eval']]
+            if 'compose' in self.inst_name:
+                data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0
+                                      for i in data['model_eval']]
+            else:
+                data['model_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0
+                                      for i in data['model_eval']]
         self.save()
 
     def human_evaluate(self):
@@ -63,8 +79,8 @@ class IConsistencySemantic(EvalUnit):
         print(f"Agreement for {self.inst_name}: ", calculate_agreement(gpt_eval_list, human_eval_list))
 
 
-class IConsistency3D(EvalUnit):
-    inst_name = 'i_consistency_3d'
+class IConsistency3DObject(EvalUnit):
+    inst_name = 'i_consistency_3d_object'
 
     def evaluate(self):
         self.load_inst_mm()
@@ -77,6 +93,18 @@ class IConsistency3D(EvalUnit):
 
     def calculate_metrics(self):
         print(f'Auto evaluation accuracy for {self.inst_name}: ', np.mean([np.mean(data['auto_eval']) for data in self.res_list]))
+
+
+class IConsistency3DScene(IConsistency3DObject):
+    inst_name = 'i_consistency_3d_scene'
+
+
+class IConsistencyCompose(IConsistencySemantic):
+    inst_name = 'i_consistency_compose'
+
+
+class IConsistencyDecompose(IConsistencySemantic):
+    inst_name = 'i_consistency_decompose'
 
 
 class AConsistencyConversation(EvalUnit):
@@ -96,11 +124,11 @@ class AConsistencyConversation(EvalUnit):
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['transcript']) != len(inst['order']):
-                data['auto_eval'] = [FAILED_TOKEN] * len(inst['constraints'])
+                data['auto_eval'] = [FAILED_TOKEN] * len(inst['constraint'])
                 continue
             else:
                 data['auto_eval'] = []
-            for key, val in inst['constraints'].items():
+            for key, val in inst['constraint'].items():
                 text_list.append(data['transcript'][int(key)])
                 instruction_list.append(val)
                 data['auto_eval'].append(idx)
@@ -180,6 +208,56 @@ class AConsistencyConversation(EvalUnit):
         print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_cat, human_eval_cat))
 
 
+class AConsistencyVariant(EvalUnit):
+    inst_name = 'a_consistency_variant'
+
+    def evaluate(self):
+        idx = 0
+        audio_list = []
+        text_list = []
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) == 3:
+                audio_list += data['audio_list']
+                text_list += [inst['text']] * 3
+                data['transcript'] = [idx, idx + 1, idx + 2]
+                idx += 3
+        transcripts, wers = transcribe_speech(audio_list, text_list)
+        for data in self.res_list:
+            if 'transcript' in data:
+                data['wer'] = [wers[i] for i in data['transcript']]
+                data['transcript'] = [transcripts[i] for i in data['transcript']]
+            else:
+                data['wer'] = [0.0 for _ in data['transcript']]
+        self.save()
+        for data, inst in zip(self.res_list, self.inst_list):
+            if 'transcript' in data:
+                if inst['constraint'][0] == 'pitch':
+                    a, _ = calculate_pitch(data['audio_list'][0])
+                    b, _ = calculate_pitch(data['audio_list'][1])
+                    c, _ = calculate_pitch(data['audio_list'][2])
+                    data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
+                                              or (a > b > c and inst['constraint'][1] == 'decrease'))
+                elif inst['constraint'][0] == 'speed':
+                    a, _= calculate_speed(data['audio_list'][0], data['transcript'][0])
+                    b, _ = calculate_speed(data['audio_list'][1], data['transcript'][1])
+                    c, _ = calculate_speed(data['audio_list'][2], data['transcript'][2])
+                    data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
+                                              or (a > b > c and inst['constraint'][1] == 'decrease'))
+                else:
+                    a = calculate_volume(data['audio_list'][0])
+                    b = calculate_volume(data['audio_list'][1])
+                    c = calculate_volume(data['audio_list'][2])
+                    data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
+                                              or (a > b > c and inst['constraint'][1] == 'decrease'))
+            else:
+                data['auto_eval'] = 0.0
+        self.save()
+
+    def calculate_metrics(self):
+        print(f'Word Error Rate for {self.inst_name}: ', np.mean([data['wer'] for data in self.res_list]))
+        model_eval_list = [data['auto_eval'] for data in self.res_list]
+        print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
+
 class IStructure(EvalUnit):
     inst_name = 'i_structure'
 
@@ -209,7 +287,352 @@ class AStructure(IStructure):
     inst_name = 'a_structure'
 
 
+class ITCoherence(EvalUnit):
+    idx = 0
+    label_list: tuple
+    default_eval = 0.0
+
+    def evaluate(self, model='gpt'):
+        text_pattern = r'<image_start><image_\d+><image_end>'
+        queries = []
+        self.idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            texts = re.split(text_pattern, data['response'])
+            if len(texts) != 2:
+                data['model_eval'] = FAILED_TOKEN
+                continue
+            texts = [t.strip() for t in texts if t.strip() != '']
+            if len(texts) != 1:
+                data['model_eval'] = FAILED_TOKEN
+                continue
+            self.model_process_data(data, inst, texts[0], queries)
+        if model == 'gpt':
+            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        else:
+            responses = batch(query_gemini, queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0, num_worker=2)
+        for data in self.res_list:
+            if data['model_eval'] != FAILED_TOKEN:
+                self.model_process_response(data, responses)
+            else:
+                data['model_eval'] = self.default_eval
+        self.save()
+
+    def model_process_data(self, data, inst, res, queries):
+        pass
+
+    @staticmethod
+    def model_process_response(data, responses):
+        pass
+
+    def human_evaluate(self):
+        human_inst_list = []
+        human_res_list = []
+        self.idx = 0
+        for data in self.res_list:
+            self.human_process_data(data, human_inst_list, human_res_list)
+        interface = MultiLabelInterface(
+            label_list=self.label_list,
+            eval_inst_list=human_inst_list,
+            data_list=human_res_list,
+        )
+        interface.start()
+        for data in self.res_list:
+            if data['human_eval'] != FAILED_TOKEN:
+                self.human_process_response(data, interface.eval_list)
+            else:
+                data['human_eval'] = self.default_eval
+        self.save()
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        pass
+
+    @staticmethod
+    def human_process_response(data, responses):
+        pass
+
+    def calculate_metrics(self):
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
+        print(f"GPT evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
+        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
+        model_eval_list = np.concatenate([res['model_eval'] if isinstance(res['model_eval'], list) else [res['model_eval']] for res in self.res_list])
+        human_eval_list = np.concatenate([res['human_eval'] if isinstance(res['human_eval'], list) else [res['human_eval']]for res in self.res_list])
+        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
+        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+
+
+class ITCoherenceCount(ITCoherence):
+    label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
+    inst_name = 'it_coherence_count'
+
+    def model_process_data(self, data, inst, res, queries):
+        res = re.search(inst['format'], res)
+        if res is None or not (2 < int(res.group(2)) < 7):
+            data['model_eval'] = FAILED_TOKEN
+            return
+        obj, cnt = res.group(1), int(res.group(2))
+        queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_COUNT_PROMPT(obj), images=data['image_list']))
+        data['object'], data['count'], data['model_eval'] = obj, cnt, self.idx
+        self.idx += 1
+
+    @staticmethod
+    def model_process_response(data, responses):
+        data['model_eval'] = float(ord(responses[data['model_eval']].strip().lower()[0]) - 95 == data['count'])
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'object' not in data:
+            data['human_eval'] = FAILED_TOKEN
+            return
+        human_inst_list.append(f"How many {data['object']} are there in the given image?\n")
+        human_res_list.append(data)
+        data['human_eval'] = self.idx
+        self.idx += 1
+
+    @staticmethod
+    def human_process_response(data, responses):
+        data['human_eval'] = float(responses[data['human_eval']] + 2 == data['count'])
+
+
+class ITCoherenceColor(ITCoherence):
+    label_list = ('Yes', 'No')
+    inst_name = 'it_coherence_color'
+    default_eval = [0.0, 0.0, 0.0]
+
+    def model_process_data(self, data, inst, res, queries):
+        obj2col = extract_json(res)
+        if not obj2col or (set(obj2col.keys()) != set(inst['object'])) or (set(obj2col.values()) != set(inst['color'])):
+            data['model_eval'] = FAILED_TOKEN
+            return
+        queries += [form_openai_mm_query(
+            IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(f'exactly one {obj} and the color of {obj} being mostly {col}'),
+            images=data['image_list'],
+        ) for obj, col in obj2col.items()]
+        data['obj2col'], data['model_eval'] = obj2col, [self.idx, self.idx + 1, self.idx + 2]
+        self.idx += 3
+
+    @staticmethod
+    def model_process_response(data, responses):
+        data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) for i in data['model_eval']]
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'obj2col' not in data:
+            data['human_eval'] = FAILED_TOKEN
+            return
+        human_inst_list += [f"Is/Are there exactly one {obj} and the color of {obj} being mostly {col} in the given image?\n"
+                            for obj, col in data['obj2col'].items()]
+        human_res_list += [data] * 3
+        data['human_eval'] = [self.idx, self.idx + 1, self.idx + 2]
+        self.idx += 3
+
+    @staticmethod
+    def human_process_response(data, responses):
+        data['human_eval'] = [float(responses[i] == 0) for i in data['human_eval']]
+
+
+class ITCoherenceSize(ITCoherenceColor):
+    inst_name = 'it_coherence_size'
+
+    def model_process_data(self, data, inst, res, queries):
+        obj_list = extract_list(res)
+        if not obj_list or set(obj_list) != set(inst['object']):
+            data['model_eval'] = FAILED_TOKEN
+            return
+        rel_map = {'size': 'larger', 'area': 'larger', 'volume': 'bigger', 'length': 'longer', 'height': 'higher'}
+        queries += [form_openai_mm_query(
+            IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(
+                f"exactly one {obj_list[i]}, exactly one {obj_list[j]} and the "
+                f"{obj_list[j]} being obviously {rel_map[inst['relation']]} than the {obj_list[i]}"),
+            images=data['image_list']) for i in range(3) for j in range(i + 1, 3)]
+        data['object'], data['relation'] = obj_list, rel_map[inst['relation']]
+        data['model_eval'] = [self.idx, self.idx + 1, self.idx + 2]
+        self.idx += 3
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'object' not in data:
+            data['human_eval'] = FAILED_TOKEN
+            return
+        human_inst_list += [(f"Is/Are there exactly one {data['object'][i]}, exactly one {data['object'][j]} and the "
+                             f"{data['object'][j]} being obviously {data['relation']} than the "
+                             f"{data['object'][i]} in the given image?\n") for i in range(3) for j in range(i + 1, 3)]
+        human_res_list += [data] * 3
+        data['human_eval'] = [self.idx, self.idx + 1, self.idx + 2]
+        self.idx += 3
+
+
+class ITCoherenceSpacialRelative(ITCoherenceColor):
+    inst_name = 'it_coherence_spacial_relative'
+    default_eval = [0.0, 0.0]
+
+    def evaluate(self):
+        super().evaluate(model='gemini')
+        self.idx = 0
+        queries = []
+        for data in self.res_list:
+            if data['model_eval'][0] == 1.0:
+                queries.append(form_gemini_mm_query(I_SPACIAL_RELATIVE_LR(
+                    data['object'][0][0], data['object'][0][1]), images=data['image_list']))
+                data['model_eval'][0] = self.idx
+                self.idx += 1
+            if data['model_eval'][1] == 1.0:
+                queries.append(form_gemini_mm_query(I_SPACIAL_RELATIVE_UD(
+                    data['object'][1][0], data['object'][1][1]), images=data['image_list']))
+                data['model_eval'][1] = self.idx
+                self.idx += 1
+        responses = batch(query_gemini, queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0, num_worker=2)
+        for data in self.res_list:
+            if isinstance(data['model_eval'][0], int):
+                opt = re.search('nswer: ([ABC])', responses[data['model_eval'][0]])
+                if opt is not None:
+                    data['model_eval'][0] = float(ord(opt.group(1)) - 65 == data['object'][0][2])
+                else:
+                    data['model_eval'][0] = 0.0
+            if isinstance(data['model_eval'][1], int):
+                opt = re.search('nswer: ([ABC])', responses[data['model_eval'][1]])
+                if opt is not None:
+                    data['model_eval'][1] = float(ord(opt.group(1)) - 65 == data['object'][1][2])
+                else:
+                    data['model_eval'][1] = 0.0
+        self.save()
+
+
+    def model_process_data(self, data, inst, res, queries):
+        opt_list = extract_list(res)
+        opt_list = [obt.strip().lower() for obt in opt_list]
+        if not opt_list or len(opt_list) != 2 or not (set(opt_list) < {'a', 'b', 'c'}):
+            data['model_eval'] = FAILED_TOKEN
+            return
+        queries += [form_gemini_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj1} and exactly one {obj2}"),
+            images=data['image_list']) for obj1, obj2 in inst['object']]
+        data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
+                                              [a + [ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
+        self.idx += 2
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'object' not in data:
+            data['human_eval'] = FAILED_TOKEN
+            return
+        lr_map = ['to the left of', 'to the right of', 'to the top of', 'neither to the obviously left nor right of']
+        human_inst_list.append(f"Is/Are there exactly one {data['object'][0][0]}, exactly one {data['object'][0][1]} "
+                               f"and the {data['object'][0][0]} is {lr_map[data['object'][0][2]]} "
+                               f"the {data['object'][0][1]} in the given image?\n")
+        ud_map = ['positioned higher than', 'positioned lower than', 'neither positioned obviously higher nor lower than']
+        human_inst_list.append(f"Is/Are there exactly one {data['object'][1][0]}, exactly one {data['object'][1][1]} "
+                               f"and the {data['object'][1][0]} is {ud_map[data['object'][1][2]]} "
+                               f"the {data['object'][1][1]} in the given image?\n")
+        human_res_list += [data] * 2
+        data['human_eval'] = [self.idx, self.idx + 1]
+        self.idx += 2
+
+
+class ITCoherenceSpacialAbsolute(ITCoherenceColor):
+    inst_name = 'it_coherence_spacial_absolute'
+    default_eval = [0.0, 0.0]
+
+    def evaluate(self):
+        super().evaluate()
+        self.idx = 0
+        queries = []
+        for data in self.res_list:
+            for i in range(2):
+                if data['model_eval'][i] == 1.0:
+                    queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_SPACIAL_ABSOLUTE_PROMPT(
+                        data['object'][i][0]), images=data['image_list']))
+                    data['model_eval'][i] = self.idx
+                    self.idx += 1
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data in self.res_list:
+            for i in range(2):
+                if isinstance(data['model_eval'][i], int):
+                    opt = re.search('nswer: ([ABCDE])', responses[data['model_eval'][i]])
+                    if opt is not None:
+                        data['model_eval'][i] = float(ord(opt.group(1)) - 65 == data['object'][i][1])
+                    else:
+                        data['model_eval'][i] = 0.0
+        self.save()
+
+
+    def model_process_data(self, data, inst, res, queries):
+        opt_list = extract_list(res)
+        opt_list = [obt.strip().lower() for obt in opt_list]
+        if not opt_list or len(opt_list) != 2 or not (set(opt_list) < {'a', 'b', 'c', 'd'}):
+            data['model_eval'] = FAILED_TOKEN
+            return
+        queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(
+            f"exactly one {obj}"), images=data['image_list']) for obj in inst['object']]
+        data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
+                                              [[a, ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
+        self.idx += 2
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'object' not in data:
+            data['human_eval'] = FAILED_TOKEN
+            return
+        rel_map = ['bottom left', 'bottom right', 'up left', 'up right']
+        human_inst_list += [f"Is/Are there exactly one {obj} and at the {rel_map[rel]} of the given image?\n"
+                            for obj, rel in data['object']]
+        human_res_list += [data] * 2
+        data['human_eval'] = [self.idx, self.idx + 1]
+        self.idx += 2
+
+
+class ITCoherenceOCR(ITCoherence, IOCR):
+    inst_name = 'it_coherence_ocr'
+    default_eval = FAILED_TOKEN
+
+    def model_process_data(self, data, inst, res, queries):
+        res = re.search(inst['format'], res)
+        if res is None or not (1 < len(res.group(1).split(' ')) < 11):
+            data['model_eval'] = FAILED_TOKEN
+            return
+        text = res.group(1)
+        queries.append(form_openai_mm_query(
+            IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT(inst['object']),
+            images=data['image_list']
+        ))
+        data['text'], data['model_eval'] = text, self.idx
+        self.idx += 1
+
+    @staticmethod
+    def model_process_response(data, responses):
+        text_res = re.search(r'(\[.*]?)', responses[data['model_eval']])
+        if text_res is not None:
+            text_res = eval(text_res.group(1))
+        else:
+            text_res = []
+        data['model_eval'] = ' '.join(text_res).lower().strip()
+
+    def human_evaluate(self):
+        human_inst_list = []
+        human_res_list = []
+        self.idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if 'text' in data:
+                human_inst_list.append(f"Please type the major texts (ignore small texts on the edge) on {inst['object']} from top to down, "
+                            f"from left to right in the given image. Leave empty if the there is no valid Latin "
+                            f"character in the given image. Ignore small texts in the corner.")
+                human_res_list.append(data)
+                data['human_eval'] = self.idx
+                self.idx += 1
+            else:
+                data['human_eval'] = FAILED_TOKEN
+        interface = FreeLabelInterface(
+            eval_inst_list=human_inst_list,
+            data_list=human_res_list
+        )
+        interface.start()
+        for data in self.res_list:
+            if data['human_eval'] != FAILED_TOKEN:
+                data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip()
+        self.save()
+
+    def calculate_metrics(self):
+        label_list = [[self.normalize_text(res['text'] if 'text' in res else '')] for res in self.res_list]
+        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list]
+        human_eval_list = [[self.normalize_text(res['human_eval'])] for res in self.res_list]
+        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
+
+
 if __name__ == '__main__':
-    a = IConsistency3D(model_name='ImageAgent', sample_size=2)
+    a = AConsistencyVariant(model_name='AudioAgent', sample_size=2)
     a.evaluate()
     a.calculate_metrics()

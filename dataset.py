@@ -118,27 +118,28 @@ def sample_from_isg_bench():
     with open(f'./datasets/ISG-Bench/ISG-Bench.jsonl', 'r', encoding='utf-8') as file:
         for line in file:
             data = json.loads(line.strip())
-            if data['Category'] == '3D_object':
+            if data['Category'] == 'multi-Perspective Scene Generation' and len(data['Golden']) >= 8 and len(data['Query']) == 2:
                 data_list.append(json.loads(line.strip()))
     json_list = []
     idx = 0
     for data in data_list[:20]:
-        order = ['60 degrees left', '30 degrees left', '30 degrees right', '60 degrees right']
+        order = [data['Golden'][1]['content'], data['Golden'][3]['content'], data['Golden'][5]['content'], data['Golden'][7]['content']]
         idxs = random.sample(list(range(4)), 4)
         json_list.append({
-            'instruction': 'Use the given image as the reference angle and generate four additional images of the object from the following angels in order: ' + ', '.join([order[i] for i in idxs]) + '.',
+            'instruction': 'The given image represents the frontal observation scene, based on this, generate four additional images showing views from the following perspectives in order: ' + ', '.join([order[i] for i in idxs]) + '.',
             'image_list': [idx],
             'ref_image_list': list(range(idx + 1, idx + 5)),
         })
         image = Image.open('./datasets/ISG-Bench/' + data['Query'][1]['content'])
-        image.save(f'./seed_instruction/image/i_consistency_3d_{idx}.png')
+        image.save(f'./seed_instruction/image/i_consistency_3d_scene_{idx}.png')
         for i, j in enumerate(idxs):
-            image = Image.open('./datasets/ISG-Bench/' + data['Golden'][j * 2 + 1]['content'])
-            image.save(f'./seed_instruction/image/i_consistency_3d_{idx + i + 1}.png')
+            image = Image.open('./datasets/ISG-Bench/' + data['Golden'][j * 2]['content'])
+            image.save(f'./seed_instruction/image/i_consistency_3d_scene_{idx + i + 1}.png')
         idx += 5
-    with open('./seed_instruction/i_consistency_3d.jsonl', 'w', encoding='utf-8') as file:
+    with open('seed_instruction/i_consistency_3d_scene.jsonl', 'w', encoding='utf-8') as file:
         for data in json_list:
             file.write(json.dumps(data) + '\n')
+
 
 def sample_from_openmic():
     df = pd.read_csv('./datasets/temp/openmic-2018-v1.0.0/openmic-2018/openmic-2018-aggregated-labels.csv')

@@ -49,7 +49,7 @@ class IObject(EvalUnit):
             for data, inst in zip(self.res_list, self.inst_list):
                 data['model_eval'] = float(data['model_eval'] == (inst['count'] - 2))
 
-    def human_eval(self):
+    def human_evaluate(self):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -81,8 +81,8 @@ class IObject(EvalUnit):
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
         model_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
         human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(model_eval_list, human_eval_list))
         print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
+        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
 
 
 class IObjectInclude(IObject):
@@ -135,8 +135,8 @@ class IObjectCoT(IObjectInclude):
         return f"Is the given image about {obj}?\n"
 
 
-class IObjectCounting(IObject):
-    inst_name = 'i_object_counting'
+class IObjectCount(IObject):
+    inst_name = 'i_object_count'
     label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
 
     @staticmethod
@@ -149,19 +149,34 @@ class IObjectCounting(IObject):
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return ord(res.lower()[0]) - 97 if res.lower()[0] in ('a', 'b', 'c', 'd', 'e', 'f') else FAILED_TOKEN
+        return ord(res.strip().lower()[0]) - 97
 
     @staticmethod
     def human_judge_process_func(res: str):
         return res
 
 
-class ISpacial(EvalUnit):
-    @staticmethod
-    @abstractmethod
-    def instruction_func(inst: dict):
-        pass
+class IRelationTwo(IObjectInclude):
+    inst_name = 'i_relation_two'
 
+    def evaluate(self):
+        queries = []
+        for data, inst in zip(self.res_list, self.inst_list):
+            queries += [form_openai_mm_query(
+                IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(inst['object']),
+                images=data['image_list'])
+            ]
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for i, data in enumerate(self.res_list):
+            data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:])]
+        self.save()
+
+
+class IRelationAll(IRelationTwo):
+    inst_name = 'i_relation_all'
+
+
+class ISpacial(EvalUnit):
     @staticmethod
     @abstractmethod
     def human_instruction_func(inst: dict):
@@ -169,47 +184,19 @@ class ISpacial(EvalUnit):
 
     @staticmethod
     @abstractmethod
-    def gpt_judge_parse_func(res: str):
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def gpt_judge_process_func(res: str, const: tuple):
-        pass
-
-    @staticmethod
-    @abstractmethod
     def human_judge_process_func(res: str):
         pass
-
-    def evaluate(self):
-        queries = []
-        idx = 0
-        for data, inst in zip(self.res_list, self.inst_list):
-            for constraint in inst['constraints']:
-                queries.append(form_openai_mm_query(
-                    IMAGE_TOKEN(0) + self.instruction_func(constraint),
-                    images=data['image_list']
-                ))
-            data['model_eval'] = list(range(idx, idx + len(inst['constraints'])))
-            idx += len(inst['constraints'])
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-        parsed_responses = [self.gpt_judge_parse_func(res) for res in responses]
-        for data, inst in zip(self.res_list, self.inst_list):
-            data['model_eval'] = [self.gpt_judge_process_func(parsed_responses[model_eval], constraint) for
-                                model_eval, constraint in zip(data['model_eval'], inst['constraints'])]
-        self.save()
 
     def human_evaluate(self):
         human_queries = []
         human_res_list = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
-            human_res_list += [data] * len(inst['constraints'])
-            for constraint in inst['constraints']:
+            human_res_list += [data] * len(inst['constraint'])
+            for constraint in inst['constraint']:
                 human_queries.append(self.human_instruction_func(constraint))
-            data['human_eval'] = list(range(idx, idx + len(inst['constraints'])))
-            idx += len(inst['constraints'])
+            data['human_eval'] = list(range(idx, idx + len(inst['constraint'])))
+            idx += len(inst['constraint'])
         interface = MultiLabelInterface(
             label_list=("Yes", "No"),
             eval_inst_list=human_queries,
@@ -227,28 +214,50 @@ class ISpacial(EvalUnit):
         print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
         model_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
         human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Cohen's Kappa for {self.inst_name}: ", calculate_kappa(model_eval_list, human_eval_list))
         print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
+        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
 
 
 class ISpacialAbsolute(ISpacial):
     inst_name = 'i_spacial_absolute'
 
-    @staticmethod
-    def instruction_func(const: dict):
-        return I_SPACIAL_ABSOLUTE_PROMPT(const[0])
+    def evaluate(self):
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(f"exactly one {obj}"),
+                                             images=data['image_list']) for obj, _ in inst['constraint']]
+            data['model_eval'] = list(range(idx, idx + len(inst['constraint'])))
+            idx += len(inst['constraint'])
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data in self.res_list:
+            data['model_eval'] = [float('yes' in responses[i].strip().lower()) for i in data['model_eval']]
+        self.save()
+
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            for i in range(len(inst['constraint'])):
+                if data['model_eval'][i] == 1.0:
+                    queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_SPACIAL_ABSOLUTE_PROMPT(
+                        inst['constraint'][i][0]), images=data['image_list']))
+                    data['model_eval'][i] = idx
+                    idx += 1
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data, inst in zip(self.res_list, self.inst_list):
+            for i in range(len(inst['constraint'])):
+                if isinstance(data['model_eval'][i], int):
+                    opt = re.search('nswer: ([ABCDE])', responses[data['model_eval'][i]])
+                    rel = {'bottom left': 0, 'bottom right': 1, 'up left': 2, 'up right': 3}[inst['constraint'][i][1]]
+                    if opt is not None:
+                        data['model_eval'][i] = float(ord(opt.group(1)) - 65 == rel)
+                    else:
+                        data['model_eval'][i] = 0.0
+        self.save()
 
     @staticmethod
     def human_instruction_func(const: dict):
-        return f'Is there {const[0]} in the given image and locate at the {const[1]} part of the image?\n'
-
-    @staticmethod
-    def gpt_judge_parse_func(res: str):
-        return ord(res.lower()[0]) - 97 if res.lower()[0] in ('a', 'b', 'c', 'd', 'e', 'f') else FAILED_TOKEN
-
-    @staticmethod
-    def gpt_judge_process_func(res: str, const: tuple):
-        return float(res == {'bottom left': 0, 'bottom right': 1, 'top left': 2, 'top right': 3}[const[1]])
+        return f'Is there exactly one {const[0]} and at the {const[1]} of the given image?\n'
 
     @staticmethod
     def human_judge_process_func(res: str):
@@ -258,27 +267,50 @@ class ISpacialAbsolute(ISpacial):
 class ISpacialRelative(ISpacial):
     inst_name = 'i_spacial_relative'
 
-    @staticmethod
-    def instruction_func(const: dict):
-        if const[2] in ('to the left of', 'to the right of'):
-            return I_SPACIAL_RELATIVE_FR(const[0], const[1])
-        else:
-            return I_SPACIAL_RELATIVE_UD(const[0], const[1])
+    def evaluate(self):
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            queries.append(form_openai_mm_query(
+                IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(f"exactly one {inst['constraint'][0][0]} and exactly one {inst['constraint'][0][1]}"),
+                images=data['image_list']))
+            data['model_eval'] = [idx]
+            idx += 1
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data in self.res_list:
+            data['model_eval'] = [float('yes' in responses[data['model_eval'][0]].strip().lower()[-20:])]
+        self.save()
+
+        queries = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if data['model_eval'][0] == 1.0:
+                if inst['constraint'][0][2] in ('left', 'right'):
+                    queries.append(form_openai_mm_query(
+                        IMAGE_TOKEN(0) + I_SPACIAL_RELATIVE_LR(inst['constraint'][0][0], inst['constraint'][0][1]),
+                        images=data['image_list']))
+                else:
+                    queries.append(form_openai_mm_query(
+                        IMAGE_TOKEN(0) + I_SPACIAL_RELATIVE_UD(inst['constraint'][0][0], inst['constraint'][0][1]),
+                        images=data['image_list']))
+                data['model_eval'] = [idx]
+                idx += 1
+        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        for data, inst in zip(self.res_list, self.inst_list):
+            if isinstance(data['model_eval'][0], int):
+                opt = re.search('nswer: ([ABC])', responses[data['model_eval'][0]])
+                rel = {'left': 0, 'right': 1, 'above': 0, 'below': 1}[inst['constraint'][0][2]]
+                if opt is not None:
+                    data['model_eval'][0] = float(ord(opt.group(1)) - 65 == rel)
+                else:
+                    data['model_eval'][0] = 0.0
+        self.save()
 
     @staticmethod
     def human_instruction_func(const: dict):
-        return f'Is {const[0]} {const[2]} {const[1]} in the given image?\n'
-
-    @staticmethod
-    def gpt_judge_parse_func(res: str):
-        return ord(res.lower()[0]) - 97 if res.lower()[0] in ('a', 'b', 'c', 'd') else FAILED_TOKEN
-
-    @staticmethod
-    def gpt_judge_process_func(res: str, const: tuple):
-        if const[2] in ('to the left of', 'above'):
-            return float(res == 0)
-        else:
-            return float(res == 1)
+        rel = {'left': 'to the left of', 'right': 'to the right of',
+               'above': 'positioned higher than', 'below': 'positioned lower than'}[const[2]]
+        return f'Is there exactly one {const[0]}, exactly one {const[1]} and {const[0]} is {rel} {const[1]} in the given image?\n'
 
     @staticmethod
     def human_judge_process_func(res: str):
@@ -291,27 +323,21 @@ class IOCR(EvalUnit):
 
     def evaluate(self):
         queries = []
-        for data in self.res_list:
+        for data, inst in zip(self.res_list, self.inst_list):
             queries.append(form_openai_mm_query(
-                IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT('the given image'),
+                IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT(inst['object']),
                 images=data['image_list']
             ))
         responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-        pattern = r'(\[.*\]?)'
         for data, res in zip(self.res_list, responses):
-            text_res = re.search(pattern, res)
-            if text_res is not None:
-                text_res = eval(text_res.group(1))
-            else:
-                text_res = []
-            data['model_eval'] = ' '.join(text_res).lower().strip()
+            data['model_eval'] = ' '.join(extract_list(res)).lower().strip()
         self.save()
 
     def human_evaluate(self):
         interface = FreeLabelInterface(
-            eval_inst_list=["Please type the major texts (ignore small texts on the edge) from top to down, "
-                            "from left to right in the given image. Leave empty if the there is no valid Latin "
-                            "character in the given image. Ignore small texts in the corner."] * len(self.res_list),
+            eval_inst_list=[f"Please type the major texts (ignore small texts on the edge) on {inst['object']} from top to down, "
+                            f"from left to right in the given image. Leave empty if the there is no valid Latin "
+                            f"character in the given image. Ignore small texts in the corner." for inst in self.inst_list],
             data_list=self.res_list
         )
         interface.start()
@@ -335,15 +361,15 @@ class IOCR(EvalUnit):
 
     def _calculate_metrics(self, label_list, model_eval_list, human_eval_list):
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
-        wer_list = [1.0 - wer.compute(predictions=model_eval, references=human_eval)
-                    for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
-        print(f"Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
-        wer_list = [1.0 - wer.compute(predictions=model_eval, references=label)
+        wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
                     for model_eval, label in zip(model_eval_list, label_list)]
         print(f"GPT evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
-        wer_list = [1.0 - wer.compute(predictions=human_eval, references=label)
+        wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
                     for human_eval, label in zip(human_eval_list, label_list)]
         print(f"Human evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
+        wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=human_eval), 1.0)
+                    for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
+        print(f"Agreement for {self.inst_name}: ", np.mean(wer_list))
 
 
 class IOCRTwo(IOCR):
@@ -369,22 +395,16 @@ class IOCRTwo(IOCR):
         for data, inst in zip(self.res_list, self.inst_list):
             if FAILED_TOKEN not in data['model_eval']:
                 queries += [form_openai_mm_query(
-                    IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT('ONLY' + obj),
+                    IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT(obj),
                     images=data['image_list']) for obj in inst['text'].keys()
                 ]
                 data['model_eval'] = [idx, idx + 1]
                 idx += 2
         responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-        pattern = r'(\[.*\]?)'
         for data in self.res_list:
             if FAILED_TOKEN not in data['model_eval']:
                 for i in range(2):
-                    text_res = re.search(pattern, responses[data['model_eval'][i]])
-                    if text_res is not None:
-                        text_res = eval(text_res.group(1))
-                    else:
-                        text_res = []
-                    data['model_eval'][i] = ' '.join(text_res).lower().strip()
+                    data['model_eval'][i] = ' '.join(extract_list(responses[data['model_eval'][i]])).lower().strip()
         self.save()
 
     def human_evaluate(self):
@@ -577,5 +597,5 @@ class IEditObjectModify(IEdit, IObjectInclude):
 
 
 if __name__ == '__main__':
-    a = IOCRTwo(model_name='Dalle3', sample_size=2)
+    a = ISpacialAbsolute(model_name='Dalle3')
     a.calculate_metrics()
