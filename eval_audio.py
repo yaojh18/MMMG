@@ -562,4 +562,6 @@ class AMusicLyrics(EvalUnit):
 
 
 if __name__ == '__main__':
-    pass
+    a = AMusicAttribute(model_name='QwenAudio')
+    # a.evaluate()
+    # a.calculate_metrics()
