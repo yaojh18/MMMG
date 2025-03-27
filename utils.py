@@ -1,4 +1,6 @@
 import openai
+from google import genai
+from google.genai import types
 import time
 import base64
 import requests
@@ -28,7 +30,10 @@ from transformers.generation import LogitsProcessorList, PrefixConstrainedLogits
 
 OPENAI_KEY = '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'
 GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
-HF_KEY = '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'
+# HF_KEY = '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'
+HF_KEY = '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' # yyj's hf token
+REPLICATE_KEY = 'r8_UK8hAuFDdTWdUVsHNtHAov6TaBDo8Vw1zph3t'
+
 IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
 AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'

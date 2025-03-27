@@ -2,15 +2,13 @@ import random
 import os
 import re
 import shutil
+import sys
 import subprocess
 from abc import abstractmethod
-from transformers import MusicgenForConditionalGeneration, Qwen2AudioForConditionalGeneration
-from diffusers import DiffusionPipeline
-
 
 from prompt import I_AGENT_PROMPT
 from utils import *
-
+import PIL
 
 class Model:
     model_name: str
@@ -79,6 +77,365 @@ class Dalle3(Model):
         return res_list
 
 
+class Imagen(Model): # should we also add para "revise" here as Dalle3 does?
+    def __init__(self, model_name='imagen-3.0-generate-002'):
+        self.model_name = model_name
+        self.client = genai.Client(api_key=GEMINI_KEY)
+
+    @staticmethod
+    def generate_image_from_google(self, index, prompt, num_images=1):
+        retry_count = 0
+        max_retries = 3
+        retry_interval = 1
+        while retry_count < max_retries:
+            try:
+                response = self.client.models.generate_images(
+                    model=self.model_name,
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(
+                        number_of_images=num_images,
+                        aspect_ratio='1:1',  # or '16:9', '4:3',etc
+                    )
+                )
+
+                images = [
+                    Image.open(BytesIO(generated_image.image.image_bytes))
+                    for generated_image in response.generated_images
+                ]
+                return index, images
+
+            except Exception as e:
+                print(f"Error info: {e}")
+                print('Retrying....')
+                retry_count += 1
+                time.sleep(retry_interval * (2 ** retry_count)) 
+
+        print('Failed to get response.')
+        return index, [None] * num_images  
+
+    def generate(self, query_list):
+        prompts = [query['instruction'] for query in query_list]
+
+        results = []
+        for index, prompt in enumerate(prompts):
+            _, images = self.generate_image_from_google(index, prompt, num_images=1) 
+            results.append({
+                'query': query_list[index],
+                'response': IMAGE_TOKEN(0),
+                'image_list': images, 
+                'audio_list': []
+            })
+
+        return results
+    
+class StableDiffusion3_5(Model):
+    def __init__(self, model_name="stabilityai/stable-diffusion-3.5-large"):
+        from diffusers import BitsAndBytesConfig, SD3Transformer2DModel, StableDiffusion3Pipeline
+    
+        self.model_name = model_name
+        self.device = torch.device("cuda:0")
+        
+        nf4_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            # bnb_4bit_quant_type="nf4",
+            # bnb_4bit_compute_dtype=torch.bfloat16,
+            token=HF_KEY,
+            trust_remote_code=True
+        )
+
+        transformer_model = SD3Transformer2DModel.from_pretrained(
+            self.model_name,
+            subfolder="transformer",
+            # quantization_config=nf4_config,
+            torch_dtype=torch.bfloat16,
+            token=HF_KEY,
+            trust_remote_code=True
+        )
+
+        self.pipeline = StableDiffusion3Pipeline.from_pretrained(
+            self.model_name,
+            transformer=transformer_model,
+            torch_dtype=torch.bfloat16,
+            token=HF_KEY,
+            trust_remote_code=True
+        )
+
+        self.pipeline.enable_model_cpu_offload()
+
+    @staticmethod
+    def _process_image(image):
+        return image if isinstance(image, Image.Image) else Image.fromarray(image)
+
+    def generate_image(self, index, prompt, num_inference_steps=28, guidance_scale=4.5, max_sequence_length=512):
+        try:
+            output = self.pipeline(
+                prompt=prompt,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                max_sequence_length=max_sequence_length,
+            )
+            image = self._process_image(output.images[0])
+            return index, image
+
+        except Exception as e:
+            print(f"Error generating image for prompt '{prompt}': {e}")
+            return index, None 
+
+    def generate(self, query_list):
+        res_list = []
+        for index, query in enumerate(query_list):
+            prompt = query.get("instruction", "")
+            _, image = self.generate_image(
+                index=index,
+                prompt=prompt,
+                num_inference_steps=query.get("num_inference_steps", 28),
+                guidance_scale=query.get("guidance_scale", 4.5),
+                max_sequence_length=query.get("max_sequence_length", 512),
+            )
+
+            res_list.append({
+                "query": query,
+                "response": IMAGE_TOKEN(0),
+                "image_list": [image] if image else [],
+                "audio_list": [],
+            })
+
+        return res_list
+
+
+class Recraft(Model):
+    def __init__(self, model_name="recraft-ai/recraft-v3"):
+        self.model_name = model_name
+        os.environ["REPLICATE_API_TOKEN"] = REPLICATE_KEY
+
+    def generate(self, query_list):
+        import replicate
+        res_list = []
+        for query in query_list:
+            try:
+                prompt = query.get("instruction", "")
+                size = query.get("size", "1024x1024")
+
+                input_params = {
+                    "size": size,
+                    "prompt": prompt
+                }
+
+                output = replicate.run(
+                    self.model_name,
+                    input=input_params,
+                )
+
+                image_bytes = output.read()
+                image = Image.open(BytesIO(image_bytes))
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [image],
+                    "audio_list": [],
+                })
+                
+
+            except Exception as e:
+                print(f"Error generating image for prompt '{prompt}': {e}")
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return res_list    
+
+
+class LumaPhoton(Model):
+    def __init__(self, model_name="luma/photon"):
+        self.model_name = model_name
+        os.environ["REPLICATE_API_TOKEN"] = REPLICATE_KEY
+
+    def generate(self, query_list):
+        import replicate
+        res_list = []
+        for query in query_list:
+            try:
+                prompt = query.get("instruction", "")
+                size = query.get("size", "1024x1024")
+
+                input_params = {
+                    "size": size,
+                    "prompt": prompt
+                }
+
+                output = replicate.run(
+                    self.model_name,
+                    input=input_params,
+                )
+
+                image_bytes = output.read()
+                image = Image.open(BytesIO(image_bytes))
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [image],
+                    "audio_list": [],
+                })
+                
+
+            except Exception as e:
+                print(f"Error generating image for prompt '{prompt}': {e}")
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return res_list    
+
+class Flux1_1(Model):
+    def __init__(self, model_name="black-forest-labs/flux-1.1-pro"):
+        self.model_name = model_name
+        os.environ["REPLICATE_API_TOKEN"] = REPLICATE_KEY
+
+    def generate(self, query_list):
+        import replicate
+        res_list = []
+        for query in query_list:
+            try:
+                prompt = query.get("instruction", "")
+                size = query.get("size", "768x1344") # WARNING: If the size is too large (e.g. 1024*1024), there may be error: Prediction interrupted and the image should be uploaded via URLs (github issue#135) 
+
+                input_params = {
+                    "prompt": prompt,
+                    "prompt_upsampling": True,
+                    "size":size
+                }
+
+                output = replicate.run(
+                    self.model_name,
+                    input=input_params,
+                )
+
+                image_bytes = output.read()
+                image = Image.open(BytesIO(image_bytes))
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [image],
+                    "audio_list": [],
+                })
+                
+
+            except Exception as e:
+                print(f"Error generating image for prompt '{prompt}': {e}")
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return res_list    
+
+class Ideogram_v2(Model):
+    def __init__(self, model_name="ideogram-ai/ideogram-v2"):
+        self.model_name = model_name
+        os.environ["REPLICATE_API_TOKEN"] = REPLICATE_KEY
+
+    def generate(self, query_list):
+        import replicate
+        res_list = []
+        for query in query_list:
+            try:
+                prompt = query.get("instruction", "")
+
+                input_params = {
+                    "prompt": prompt,
+                    "aspect_ratio": "1:1",  # or "16:9", "4:3", etc.
+                }
+
+                output = replicate.run(
+                    self.model_name,
+                    input=input_params,
+                )
+
+                image_bytes = output.read()
+                image = Image.open(BytesIO(image_bytes))
+
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [image],
+                    "audio_list": [],
+                })
+                
+
+            except Exception as e:
+                print(f"Error generating image for prompt '{prompt}': {e}")
+                res_list.append({
+                    "query": query,
+                    "response": IMAGE_TOKEN(0),
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return res_list  
+    
+
+class Flux_1_dev(Model):
+    def __init__(self, model_name="FLUX.1-dev"):
+        super().__init__()
+        self.model_name = model_name
+
+        from diffusers import FluxPipeline        
+        self.pipe = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-dev",
+            torch_dtype=torch.bfloat16,
+            token=HF_KEY,
+            trust_remote_code=True
+        )
+        self.pipe.enable_model_cpu_offload()  
+        
+        self.default_params = {
+            'height': 1024,
+            'width': 1024,
+            'guidance_scale': 3.5,
+            'num_inference_steps': 50,
+            'max_sequence_length': 512,
+            'generator': torch.Generator("cpu").manual_seed(0)
+        }
+
+    def generate(self, query_list):
+        res_list = []
+        for query in query_list:
+            prompt = query['instruction']
+            params = self.default_params.copy()
+
+            if 'params' in query:
+                params.update(query['params'])
+            
+            image = self.pipe(
+                prompt,
+                height=params['height'],
+                width=params['width'],
+                guidance_scale=params['guidance_scale'],
+                num_inference_steps=params['num_inference_steps'],
+                max_sequence_length=params['max_sequence_length'],
+                generator=params['generator']
+            ).images[0]
+            
+            res_list.append({
+                'query': query,
+                'response': IMAGE_TOKEN(0), 
+                'image_list': [image],
+                'audio_list': []
+            })
+        
+        return res_list
+    
 class OmniGen(Model):
     def __init__(self):
         super().__init__()
@@ -186,6 +543,7 @@ class VoxInstruct(Model):
 
 class MusicGen(Model):
     def __init__(self):
+        from transformers import MusicgenForConditionalGeneration
         self.processor = AutoProcessor.from_pretrained("facebook/musicgen-large")
         self.model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-large").to('cuda')
 
@@ -252,7 +610,8 @@ class Anole(Model):
 class Emu3(Model):
     def __init__(self):
         super().__init__()
-        from emu3.mllm.processing_emu3 import Emu3Processor
+        
+        from models.emu3.mllm.processing_emu3 import Emu3Processor # extra path 
         EMU_HUB = "BAAI/Emu3-Gen"
         VQ_HUB = "BAAI/Emu3-VisionTokenizer"
 
@@ -321,7 +680,9 @@ class Emu3(Model):
 class Janus(Model):
     def __init__(self):
         super().__init__()
-        from janus.models import MultiModalityCausalLM, VLChatProcessor
+        from models.janus.models import MultiModalityCausalLM, VLChatProcessor
+        from models.janus.utils.io import load_pil_images
+
         self.model_path = "deepseek-ai/Janus-Pro-7B"
         
         self.vl_chat_processor = VLChatProcessor.from_pretrained(self.model_path)
@@ -414,8 +775,9 @@ class Janus(Model):
 
         return image_list
     
+# FIXME: path issues for vila-u
 class VilaU(Model):
-    def __init__(self, model_path="./libs/vila-u/vila-uvila-u-7b-256", vila_u_path="./libs/vila-u"):
+    def __init__(self, model_path="./models/vila-u/vila-uvila-u-7b-256", vila_u_path="./models/vila-u"):
         super().__init__()
         self._add_vila_u_path(vila_u_path)
         self.model = self._load_model(model_path)
@@ -429,13 +791,14 @@ class VilaU(Model):
             
     def _load_model(self, model_path):
         try:
-            import vila_u
-            return vila_u.load(model_path)
+            import models.vilau.vila_u
+            return models.vilau.vila_u.load(model_path)
         except ImportError:
             raise ImportError("The vila_u module is required to run this model.")
 
     def _save_image(self, response, path):
         """Save generated images to disk."""
+        import cv2
         os.makedirs(path, exist_ok=True)
         image_list = []
         for i in range(response.shape[0]):
@@ -489,21 +852,23 @@ class VilaU(Model):
     def _load_image(self, image_path):
         """Load an image using the vila_u utility."""
         try:
-            import vila_u
-            return vila_u.Image(image_path)
+            import models.vilau.vila_u
+            return models.vilau.vila_u.Image(image_path)
         except ImportError:
             raise ImportError("The vila_u module is required to load images.")
 
 class LaVIT(Model): # FIXME: haven't resolved the env issues
-    def __init__(self, model_path="./libs/LaVIT/models/LaVIT-7B-v2", model_dtype="bf16", device_id=0):
+    def __init__(self):
         super().__init__()
-        self._add_lavit_path("./libs/LaVIT")
-
-        self.model_path = model_path
-        self.model_dtype = model_dtype
-        self.device_id = device_id
-        self.device = torch.device(f"cuda:{device_id}")
-        self.torch_dtype = torch.bfloat16 if model_dtype == "bf16" else torch.float16
+        abs_path = os.path.abspath("./models/LaVIT")
+        if abs_path not in sys.path:
+            sys.path.append(abs_path)
+        
+        self.model_path = "./models/LaVIT/LaVIT-7B-v2"
+        self.model_dtype = "bf16"
+        self.device_id = 0
+        self.device = torch.device(f"cuda:{self.device_id}")
+        self.torch_dtype = torch.bfloat16 if self.model_dtype == "bf16" else torch.float16
 
         seed = 0
         torch.manual_seed(seed)
@@ -521,14 +886,9 @@ class LaVIT(Model): # FIXME: haven't resolved the env issues
             "3:4": (1152, 896),
         }
 
-    def _add_lavit_path(self, lavit_path):
-        abs_path = os.path.abspath(lavit_path)
-        if abs_path not in sys.path:
-            sys.path.append(abs_path)
-
     def _build_model(self):
         try:
-            from models import build_model 
+            from .models.LaVIT.models import build_model 
             model = build_model(
                 model_path=self.model_path,
                 model_dtype=self.model_dtype,
@@ -575,7 +935,6 @@ class LaVIT(Model): # FIXME: haven't resolved the env issues
                 })
 
             elif "input_prompts" in query:
-                # multimodal image synthesis
                 input_prompts = query["input_prompts"]
                 ratio = query.get("ratio", "1:1")
                 guidance_scale_for_llm = query.get("guidance_scale", 5.0)
@@ -606,6 +965,7 @@ class LaVIT(Model): # FIXME: haven't resolved the env issues
 class QwenAudio(Model): # Qwen2-Audio-7B 
     def __init__(self):
         super().__init__()
+        from transformers import Qwen2AudioForConditionalGeneration
         self.model = Qwen2AudioForConditionalGeneration.from_pretrained(
             "Qwen/Qwen2-Audio-7B", trust_remote_code=True
         )
@@ -649,60 +1009,61 @@ class QwenAudio(Model): # Qwen2-Audio-7B
 
         return res_list
 
-# TODO: import the module _image_to_audio from riffusiom/cli.py
-class Riffusion(Model):
-    def __init__(self):
-        self.model = DiffusionPipeline.from_pretrained("riffusion/riffusion-model-v1").to('cuda')
-        self.sample_rate = 44100
+# # TODO: import the module _image_to_audio from riffusiom/cli.py
+# class Riffusion(Model):
+#     def __init__(self):
+#         from diffusers import DiffusionPipeline
+#         self.model = DiffusionPipeline.from_pretrained("riffusion/riffusion-model-v1").to('cuda')
+#         self.sample_rate = 44100
 
-    def generate(self, query_list):
-        query_list = [query['instruction'][9:] for query in query_list]
-        output_list = []
+#     def generate(self, query_list):
+#         query_list = [query['instruction'][9:] for query in query_list]
+#         output_list = []
 
-        for query in tqdm(query_list, desc="Generating audio"):
-            # spectrogram image
-            image = self.model(prompt=query).images[0]
-            audio_signal = self._image_to_audio(image)
+#         for query in tqdm(query_list, desc="Generating audio"):
+#             # spectrogram image
+#             image = self.model(prompt=query).images[0]
+#             audio_signal = self._image_to_audio(image)
 
-            audio_signal = librosa.resample(
-                audio_signal,
-                orig_sr=self.sample_rate,
-                target_sr=SAMPLE_RATE
-            )
-            output_list.append(audio_signal)
+#             audio_signal = librosa.resample(
+#                 audio_signal,
+#                 orig_sr=self.sample_rate,
+#                 target_sr=SAMPLE_RATE
+#             )
+#             output_list.append(audio_signal)
         
-        res_list = []
-        for query, output in zip(query_list, output_list):
-            res_list.append({
-                'query': query,
-                'response': AUDIO_TOKEN(0),  
-                'image_list': [],     
-                'audio_list': [output],  
-            })
+#         res_list = []
+#         for query, output in zip(query_list, output_list):
+#             res_list.append({
+#                 'query': query,
+#                 'response': AUDIO_TOKEN(0),  
+#                 'image_list': [],     
+#                 'audio_list': [output],  
+#             })
 
-        return res_list
+#         return res_list
 
-    def _image_to_audio(*, image: str, audio: str, device: str = "cuda"):
-        """
-        Reconstruct an audio clip from a spectrogram image.
-        """
-        pil_image = Image.open(image)
+#     def _image_to_audio(*, image: str, audio: str, device: str = "cuda"):
+#         """
+#         Reconstruct an audio clip from a spectrogram image.
+#         """
+#         pil_image = Image.open(image)
 
-        # Get parameters from image exif
-        img_exif = pil_image.getexif()
-        assert img_exif is not None
+#         # Get parameters from image exif
+#         img_exif = pil_image.getexif()
+#         assert img_exif is not None
 
-        try:
-            params = SpectrogramParams.from_exif(exif=img_exif)
-        except (KeyError, AttributeError):
-            print("WARNING: Could not find spectrogram parameters in exif data. Using defaults.")
-            params = SpectrogramParams()
+#         try:
+#             params = SpectrogramParams.from_exif(exif=img_exif)
+#         except (KeyError, AttributeError):
+#             print("WARNING: Could not find spectrogram parameters in exif data. Using defaults.")
+#             params = SpectrogramParams()
 
-        converter = SpectrogramImageConverter(params=params, device=device)
-        segment = converter.audio_from_spectrogram_image(pil_image)
+#         converter = SpectrogramImageConverter(params=params, device=device)
+#         segment = converter.audio_from_spectrogram_image(pil_image)
 
-        extension = Path(audio).suffix[1:]
-        segment.export(audio, format=extension)
+#         extension = Path(audio).suffix[1:]
+#         segment.export(audio, format=extension)
 
-        print(f"Wrote {audio} ({segment.duration_seconds:.2f} seconds)")
+#         print(f"Wrote {audio} ({segment.duration_seconds:.2f} seconds)")
 
