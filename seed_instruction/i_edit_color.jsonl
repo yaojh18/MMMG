@@ -1,0 +1,20 @@
+{"instruction": "Change the color of the purple in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the cyan ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the red cube in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the grey cylinder in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the biggest ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the smallest ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the smallest cylinder in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the second biggest cube in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the ball to the right of the cyan ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the cube to the left of the cyan ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the ball in front of the green cube in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the cube behind the blue ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the farthest ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the farthest cylinder in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the closest cylinder in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the closest cube in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the cube obscured by a ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the cylinder obscured by a ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the ball obscured by a brown cylinder in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}
+{"instruction": "Change the color of the cube obscured by a ball in <image_0> into the color of <image_1>. Keep the rest of the image unchanged."}

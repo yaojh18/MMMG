@@ -1,6 +1,8 @@
 import itertools
 import re
 
+from playwright.sync_api import sync_playwright
+
 from eval import EvalUnit
 from prompt import *
 from interface import *
@@ -301,11 +303,12 @@ class ITCoherence(EvalUnit):
             if len(texts) != 2:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            texts = [t.strip() for t in texts if t.strip() != '']
-            if len(texts) != 1:
-                data['model_eval'] = FAILED_TOKEN
-                continue
-            self.model_process_data(data, inst, texts[0], queries)
+            # texts = [t.strip() for t in texts if t.strip() != '']
+            # if len(texts) != 1:
+            #     data['model_eval'] = FAILED_TOKEN
+            #     continue
+            # self.model_process_data(data, inst, texts[0], queries)
+            self.model_process_data(data, inst, ''.join(texts), queries)
         if model == 'gpt':
             responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
         else:
@@ -632,7 +635,86 @@ class ITCoherenceOCR(ITCoherence, IOCR):
         self._calculate_metrics(label_list, model_eval_list, human_eval_list)
 
 
+class ITCoherenceMath(ITCoherenceColor):
+    inst_name = 'it_coherence_math'
+    def evaluate(self):
+        self.load_inst_mm()
+        super().evaluate(model='gemini')
+
+    def model_process_data(self, data, inst, res, queries):
+        text = re.search(r"<<(.*?)>>", res)
+        if text is None:
+            data['model_eval'] = [0.0, self.idx]
+            self.idx += 1
+        else:
+            data['model_eval'] = [self.idx, self.idx + 1]
+            data['text'] = text.group(1)
+            queries.append(form_gemini_mm_query(LLM_AS_A_JUDGE_PROMPT.format(inst['pattern'], text.group(1))))
+            self.idx += 2
+        queries.append(form_gemini_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list']))
+        data['pattern'] = inst['pattern']
+
+    @staticmethod
+    def model_process_response(data, responses):
+        data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if isinstance(i, int) else i
+                              for i in data['model_eval']]
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'text' in data:
+            human_inst_list.append("(Ignore the given image.)\n" + LLM_AS_A_JUDGE_PROMPT.format(data['pattern'], data['text']))
+            human_res_list.append(data)
+            data['human_eval'] = [self.idx, self.idx + 1]
+            self.idx += 2
+        else:
+            data['human_eval'] = [0.0, self.idx]
+            self.idx += 1
+        human_inst_list.append(VLM_AS_A_JUDGE_PROMPT.format(data['pattern']))
+        human_res_list.append(data)
+
+
+class ITCoherenceCode(ITCoherenceColor):
+    inst_name = 'it_coherence_code'
+
+    @staticmethod
+    def html_to_image(html_content):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 960, "height": 540})
+            html_b64 = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
+            page.goto(f"data:text/html;base64,{html_b64}")
+            screenshot_bytes = page.screenshot()
+            browser.close()
+            image = Image.open(BytesIO(screenshot_bytes))
+            return image
+
+    def evaluate(self):
+        for data, inst in zip(self.res_list, self.inst_list):
+            html_code = re.search(r'```html(.*?)```', data['response'], re.DOTALL)
+            if html_code is None:
+                data['image_list'] = [data['image_list'][0].copy(), Image.new("RGB", (960, 540), "white")]
+            try:
+                screenshot = self.html_to_image(html_code.group(1))
+                data['image_list'] = [data['image_list'][0].copy(), screenshot]
+            except Exception as e:
+                data['image_list'] = [data['image_list'][0].copy(), Image.new("RGB", (960, 540), "white")]
+        self.save(save_all=True)
+        super().evaluate(model='gemini')
+
+    def model_process_data(self, data, inst, res, queries):
+        queries += [form_gemini_mm_query(
+            I_OBJECT_EXIST_COT_PROMPT(inst['object']),
+            images=[img],
+        ) for img in data['image_list']]
+        data['object'], data['model_eval'] = inst['object'], [self.idx, self.idx + 1]
+        self.idx += 2
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        human_inst_list += [f"Is/Are there {data['object']} in the given image?\n"] * 2
+        human_res_list += [{'image_list': [data['image_list'][0]]}, {'image_list': [data['image_list'][1]]}]
+        data['human_eval'] = [self.idx, self.idx + 1]
+        self.idx += 2
+
+
 if __name__ == '__main__':
-    a = AConsistencyVariant(model_name='AudioAgent', sample_size=2)
-    a.evaluate()
+    a = ITCoherenceMath(model_name='ImageAgent', sample_size=2)
     a.calculate_metrics()

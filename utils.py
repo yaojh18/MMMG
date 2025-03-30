@@ -73,7 +73,7 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
     return buffer.getvalue()
 
 
-def form_openai_mm_query(text, images=(), audios=()):
+def form_openai_mm_query(text, images=[], audios=[]):
     texts = re.split(r'<(?:image|audio)_start><(?:image|audio)_\d+><(?:image|audio)_end>', text)
     modalities = re.findall(r'<((?:image|audio)_\d+)>', text)
     message = []
@@ -104,7 +104,7 @@ def form_openai_mm_query(text, images=(), audios=()):
     }]
 
 
-def form_gemini_mm_query(text, images=(), audios=()):
+def form_gemini_mm_query(text, images=[], audios=[]):
     message = [text] + images
     for audio in audios:
         message.append({

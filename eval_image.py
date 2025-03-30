@@ -596,6 +596,37 @@ class IEditObjectModify(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_modify'
 
 
+class IEditAdd(EvalUnit):
+    inst_name = 'i_edit_add'
+
+    def evaluate(self):
+        self.load_inst_mm()
+        for data, inst in zip(self.res_list, self.inst_list):
+            origin_image = inst['image_list'][0].convert('RGB')
+            image = data['image_list'][0].resize(origin_image.size)
+            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            bbox = (max(inst['bbox'][0] - width_margin, 0),
+                    max(inst['bbox'][1] - height_margin, 0),
+                    min(inst['bbox'][2] + width_margin, origin_image.size[0]),
+                    min(inst['bbox'][3] + height_margin, origin_image.size[1])
+                    )
+            origin_arr = np.array(origin_image)
+            arr = np.array(image)
+            origin_arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
+            arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
+            data['auto_eval'] = [calculate_ssim(arr, origin_arr), calculate_dreamsim(data['image_list'][0], inst['ref_image_list'][0])]
+        self.save()
+
+
+    def calculate_metrics(self):
+        auto_eval_list = [np.mean(res['auto_eval']) for res in self.res_list]
+        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+
+
+class IEditColor(IEditAdd):
+    inst_name = 'i_edit_color'
+
+
 if __name__ == '__main__':
     a = ISpacialAbsolute(model_name='Dalle3')
     a.calculate_metrics()

@@ -1,20 +1,20 @@
-{"instruction": "Add a puppy on top of the suitcase.", "image_list": [0], "bbox": [122, 47, 500, 476], "object": "a puppy"}
-{"instruction": "Add a smiley face on the wall between the cop and the stop sign.", "image_list": [1], "bbox": [146, 47, 332, 497], "object": "a smiley face"}
-{"instruction": "Add soapy water to the glass bowl.", "image_list": [2], "bbox": [297, 0, 499, 157], "object": "soapy water in the glass bowl"}
-{"instruction": "Add a peace sign to the front of the man's yellow t-shirt.", "image_list": [3], "bbox": [153, 139, 384, 396], "object": "an exact peace sign"}
-{"instruction": "Add a dog laying next to the cat. ", "image_list": [4], "bbox": [0, 165, 498, 449], "object": "a dog"}
-{"instruction": "Add a window on the upper left door on the fridge. ", "image_list": [5], "bbox": [35, 55, 229, 274], "object": "a window"}
-{"instruction": "Insert an ice cream cone in the empty hand of the boy.", "image_list": [6], "object": "a ice cream cone held in the hand"}
-{"instruction": "Add strawberries and bananas to the red bowl.", "image_list": [7], "bbox": [272, 312, 463, 481], "object": "strawberries and bananas in the bowl"}
-{"instruction": "Add a blue pen to the table", "image_list": [8], "bbox": [0, 344, 496, 498], "object": "a blue pen on the table"}
-{"instruction": "Add Christmas lights to the trees", "image_list": [9], "bbox": [265, 203, 498, 385], "object": "Christmas lights on the trees"}
-{"instruction": "Insert an apple on the left side on the hotdog. ", "image_list": [10], "bbox": [0, 0, 189, 496], "object": "a fully visible apple"}
-{"instruction": "Give the woman in black dress a red rose in her hand.", "image_list": [11], "bbox": [96, 147, 135, 220], "object": "a red rose in the hand"}
-{"instruction": "Add a table under the umbrella", "image_list": [12], "bbox": [3, 225, 366, 385], "object": "a table under the umbrella"}
-{"instruction": "Add a clock on the back wall", "image_list": [13], "bbox": [0, 93, 461, 297], "object": "a clock on the wall"}
-{"instruction": "Add a teddy bear on the stand.", "image_list": [14], "bbox": [78, 173, 321, 330], "object": "a teddy bear on the stand"}
-{"instruction": "Add a blue sticker to the meter. ", "image_list": [15], "bbox": [132, 220, 363, 499], "object": "a blue sticker"}
-{"instruction": "Add a monkey sitting on the fire hydrant.", "image_list": [16], "bbox": [35, 155, 169, 323], "object": "a monkey sitting on the fire hydrant"}
-{"instruction": "Add a yellow star logo to the side of the white surfboard.", "image_list": [17], "bbox": [92, 138, 449, 314], "object": "a yellow star logo to the side of the surfboard"}
-{"instruction": "Add a white cat in front of the laptop. ", "image_list": [18], "bbox": [0, 247, 498, 498], "object": "a fully visible white cat"}
-{"instruction": "Have a soccer to the right of the chair.", "image_list": [19], "bbox": [243, 300, 497, 496], "object": "a fully visible soccer"}
+{"instruction": "Add a puppy on top of the suitcase. Keep the rest of the image unchanged.", "image_list": [0], "bbox": [122, 47, 500, 476], "object": "a puppy"}
+{"instruction": "Add a smiley face on the wall between the cop and the stop sign. Keep the rest of the image unchanged.", "image_list": [1], "bbox": [146, 47, 332, 497], "object": "a smiley face"}
+{"instruction": "Add soapy water to the glass bowl. Keep the rest of the image unchanged.", "image_list": [2], "bbox": [297, 0, 499, 157], "object": "soapy water in the glass bowl"}
+{"instruction": "Add a peace sign to the front of the man's yellow t-shirt. Keep the rest of the image unchanged.", "image_list": [3], "bbox": [153, 139, 384, 396], "object": "an exact peace sign"}
+{"instruction": "Add a dog laying next to the cat. Keep the rest of the image unchanged.", "image_list": [4], "bbox": [0, 165, 498, 449], "object": "a dog"}
+{"instruction": "Add a window on the upper left door on the fridge. Keep the rest of the image unchanged.", "image_list": [5], "bbox": [35, 55, 229, 274], "object": "a window"}
+{"instruction": "Insert an ice cream cone in the empty hand of the boy. Keep the rest of the image unchanged.", "image_list": [6], "object": "a ice cream cone held in the hand"}
+{"instruction": "Add strawberries and bananas to the red bowl. Keep the rest of the image unchanged.", "image_list": [7], "bbox": [272, 312, 463, 481], "object": "strawberries and bananas in the bowl"}
+{"instruction": "Add a blue pen to the table. Keep the rest of the image unchanged.", "image_list": [8], "bbox": [0, 344, 496, 498], "object": "a blue pen on the table"}
+{"instruction": "Add Christmas lights to the trees. Keep the rest of the image unchanged.", "image_list": [9], "bbox": [265, 203, 498, 385], "object": "Christmas lights on the trees"}
+{"instruction": "Insert an apple on the left side on the hotdog. Keep the rest of the image unchanged.", "image_list": [10], "bbox": [0, 0, 189, 496], "object": "a fully visible apple"}
+{"instruction": "Give the woman in black dress a red rose in her hand. Keep the rest of the image unchanged.", "image_list": [11], "bbox": [96, 147, 135, 220], "object": "a red rose in the hand"}
+{"instruction": "Add a table under the umbrella. Keep the rest of the image unchanged.", "image_list": [12], "bbox": [3, 225, 366, 385], "object": "a table under the umbrella"}
+{"instruction": "Add a clock on the back wall. Keep the rest of the image unchanged.", "image_list": [13], "bbox": [0, 93, 461, 297], "object": "a clock on the wall"}
+{"instruction": "Add a teddy bear on the stand. Keep the rest of the image unchanged.", "image_list": [14], "bbox": [78, 173, 321, 330], "object": "a teddy bear on the stand"}
+{"instruction": "Add a blue sticker to the meter. Keep the rest of the image unchanged.", "image_list": [15], "bbox": [132, 220, 363, 499], "object": "a blue sticker"}
+{"instruction": "Add a monkey sitting on the fire hydrant. Keep the rest of the image unchanged.", "image_list": [16], "bbox": [35, 155, 169, 323], "object": "a monkey sitting on the fire hydrant"}
+{"instruction": "Add a yellow star logo to the side of the white surfboard. Keep the rest of the image unchanged.", "image_list": [17], "bbox": [92, 138, 449, 314], "object": "a yellow star logo to the side of the surfboard"}
+{"instruction": "Add a white cat in front of the laptop. Keep the rest of the image unchanged.", "image_list": [18], "bbox": [0, 247, 498, 498], "object": "a fully visible white cat"}
+{"instruction": "Have a soccer to the right of the chair. Keep the rest of the image unchanged.", "image_list": [19], "bbox": [243, 300, 497, 496], "object": "a fully visible soccer"}

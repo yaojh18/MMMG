@@ -19,3 +19,9 @@ with open('./prompts/i_agent.txt', 'r', encoding='utf-8') as f:
 
 with open('./prompts/a_agent.txt', 'r', encoding='utf-8') as f:
     A_AGENT_PROMPT = ''.join(f.readlines())
+
+with open('./prompts/llm_as_a_judge.txt', 'r', encoding='utf-8') as f:
+    LLM_AS_A_JUDGE_PROMPT = ''.join(f.readlines())
+
+with open('./prompts/vlm_as_a_judge.txt', 'r', encoding='utf-8') as f:
+    VLM_AS_A_JUDGE_PROMPT = ''.join(f.readlines())

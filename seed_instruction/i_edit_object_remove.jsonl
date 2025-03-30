@@ -1,20 +1,20 @@
-{"instruction": "Remove the darker gray laptop on the bed.", "image_list": [0], "bbox": [380, 271, 495, 371], "object": "a gray laptop"}
-{"instruction": "Remove the floor lamp to the right of the window in the picture.", "image_list": [1], "bbox": [342, 212, 393, 332], "object": "a floor lamp"}
-{"instruction": "Delete the round light from the picture.", "image_list": [2], "bbox": [275, 59, 336, 372], "object": "a round light"}
-{"instruction": "Remove the 3 blue surfboards from the people.", "image_list": [3], "bbox": [82, 213, 378, 430], "object": "blue surfboards"}
-{"instruction": "Remove the forks from the photo", "image_list": [4], "bbox": [199, 80, 372, 346], "object": "forks"}
-{"instruction": "Remove the chairs from the image.", "image_list": [5], "bbox": [0, 150, 260, 320], "object": "chairs"}
-{"instruction": "Remove the numbers from the sign.", "image_list": [6], "bbox": [33, 257, 338, 387], "object": "numbers"}
-{"instruction": "Delete the roll of toilet paper hanging off the wall.", "image_list": [7], "bbox": [367, 228, 496, 323], "object": "a roll of toilet paper"}
-{"instruction": "Remove the man's wig.", "image_list": [8], "bbox": [179, 5, 339, 208], "object": "a man's wig"}
-{"instruction": "Delete the mixer that is sitting on the left side of the countertop. ", "image_list": [9], "bbox": [50, 220, 167, 300], "object": "a mixer"}
-{"instruction": "Remove all the peanuts inside the white bowl. ", "image_list": [10], "bbox": [-1, 125, 223, 352], "object": "peanuts"}
-{"instruction": "Remove the cat from the sink in the photo.", "image_list": [11], "bbox": [143, 44, 361, 372], "object": "a cat"}
-{"instruction": "Remove the red flowers from the photo.", "image_list": [12], "bbox": [201, 235, 427, 327], "object": "red flowers"}
-{"instruction": "Delete the food truck on the right side.", "image_list": [13], "bbox": [281, 182, 497, 378], "object": "a truck"}
-{"instruction": "Remove the red jacket from the little child.", "image_list": [14], "bbox": [350, 118, 701, 450], "object": "a red jacket"}
-{"instruction": "Get rid of the nut and bolt at the bottom right of the picture.", "image_list": [15], "bbox": [327, 271, 491, 443], "object": "nut and bolt"}
-{"instruction": "Remove the Heineken bottle on the fridge. ", "image_list": [16], "bbox": [385, 278, 417, 378], "object": "a Heineken bottle"}
-{"instruction": "Remove the fire hydrant from the photo.", "image_list": [17], "bbox": [32, 289, 185, 497], "object": "a fire hydrant"}
-{"instruction": "Remove the onions from the photo", "image_list": [18], "bbox": [143, 308, 466, 495], "object": "chopped onions in the middle plate"}
-{"instruction": "Remove the utensils from the photo", "image_list": [19], "bbox": [350, 228, 498, 463], "object": "metalic utensils"}
+{"instruction": "Remove the darker gray laptop on the bed. Keep the rest of the image unchanged.", "image_list": [0], "bbox": [380, 271, 495, 371], "object": "a gray laptop"}
+{"instruction": "Remove the floor lamp to the right of the window in the picture. Keep the rest of the image unchanged.", "image_list": [1], "bbox": [342, 212, 393, 332], "object": "a floor lamp"}
+{"instruction": "Delete the round light from the picture. Keep the rest of the image unchanged.", "image_list": [2], "bbox": [275, 59, 336, 372], "object": "a round light"}
+{"instruction": "Remove the 3 blue surfboards from the people. Keep the rest of the image unchanged.", "image_list": [3], "bbox": [82, 213, 378, 430], "object": "blue surfboards"}
+{"instruction": "Remove the forks from the photo. Keep the rest of the image unchanged.", "image_list": [4], "bbox": [199, 80, 372, 346], "object": "forks"}
+{"instruction": "Remove the chairs from the image. Keep the rest of the image unchanged.", "image_list": [5], "bbox": [0, 150, 260, 320], "object": "chairs"}
+{"instruction": "Remove the numbers from the sign. Keep the rest of the image unchanged.", "image_list": [6], "bbox": [33, 257, 338, 387], "object": "numbers"}
+{"instruction": "Delete the roll of toilet paper hanging off the wall. Keep the rest of the image unchanged.", "image_list": [7], "bbox": [367, 228, 496, 323], "object": "a roll of toilet paper"}
+{"instruction": "Remove the man's wig. Keep the rest of the image unchanged.", "image_list": [8], "bbox": [179, 5, 339, 208], "object": "a man's wig"}
+{"instruction": "Delete the mixer that is sitting on the left side of the countertop. Keep the rest of the image unchanged.", "image_list": [9], "bbox": [50, 220, 167, 300], "object": "a mixer"}
+{"instruction": "Remove all the peanuts inside the white bowl. Keep the rest of the image unchanged.", "image_list": [10], "bbox": [-1, 125, 223, 352], "object": "peanuts"}
+{"instruction": "Remove the cat from the sink in the photo. Keep the rest of the image unchanged.", "image_list": [11], "bbox": [143, 44, 361, 372], "object": "a cat"}
+{"instruction": "Remove the red flowers from the photo. Keep the rest of the image unchanged.", "image_list": [12], "bbox": [201, 235, 427, 327], "object": "red flowers"}
+{"instruction": "Delete the food truck on the right side. Keep the rest of the image unchanged.", "image_list": [13], "bbox": [281, 182, 497, 378], "object": "a truck"}
+{"instruction": "Remove the red jacket from the little child. Keep the rest of the image unchanged.", "image_list": [14], "bbox": [350, 118, 701, 450], "object": "a red jacket"}
+{"instruction": "Get rid of the nut and bolt at the bottom right of the picture. Keep the rest of the image unchanged.", "image_list": [15], "bbox": [327, 271, 491, 443], "object": "nut and bolt"}
+{"instruction": "Remove the Heineken bottle on the fridge. Keep the rest of the image unchanged.", "image_list": [16], "bbox": [385, 278, 417, 378], "object": "a Heineken bottle"}
+{"instruction": "Remove the fire hydrant from the photo. Keep the rest of the image unchanged.", "image_list": [17], "bbox": [32, 289, 185, 497], "object": "a fire hydrant"}
+{"instruction": "Remove the onions from the photo. Keep the rest of the image unchanged.", "image_list": [18], "bbox": [143, 308, 466, 495], "object": "chopped onions in the middle plate"}
+{"instruction": "Remove the utensils from the photo. Keep the rest of the image unchanged.", "image_list": [19], "bbox": [350, 228, 498, 463], "object": "metalic utensils"}
