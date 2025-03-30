@@ -22,12 +22,16 @@ from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
 from sklearn.metrics import cohen_kappa_score
-from transformers import AutoProcessor, ClapModel, AutoModelForSpeechSeq2Seq, Wav2Vec2FeatureExtractor, WavLMForXVector
+from transformers import AutoTokenizer, AutoModel, AutoImageProcessor, AutoModelForCausalLM, AutoProcessor, ClapModel, AutoModelForSpeechSeq2Seq, Wav2Vec2FeatureExtractor, WavLMForXVector
+from transformers.generation.configuration_utils import GenerationConfig
+from transformers.generation import LogitsProcessorList, PrefixConstrainedLogitsProcessor
 
 
 OPENAI_KEY = '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'
 GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
-HF_KEY = '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'
+REPLICATE_KEY = 'r8_UK8hAuFDdTWdUVsHNtHAov6TaBDo8Vw1zph3t'
+# HF_KEY = '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' # yjh
+HF_KEY = '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' # yyj
 IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
 AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'
