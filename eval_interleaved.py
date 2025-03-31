@@ -1,6 +1,4 @@
 import itertools
-import re
-
 from playwright.sync_api import sync_playwright
 
 from eval import EvalUnit
@@ -70,15 +68,24 @@ class IConsistencySemantic(EvalUnit):
             data['human_eval'] = [1.0 - interface.eval_list[i] if i != FAILED_TOKEN else 0.0 for i in data['human_eval']]
         self.save()
 
-    def calculate_metrics(self):
-        gpt_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+    def compute_accuracy(self, return_list=False):
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        if not return_list:
+            return np.mean(model_eval_list)
+        return model_eval_list
+
+    def compute_correlation(self):
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        print(f"Model evaluation accuracy for {self.inst_name}: ", np.mean(gpt_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        gpt_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
-        human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(gpt_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(gpt_eval_list, human_eval_list))
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+
+
+class IConsistencyCompose(IConsistencySemantic):
+    inst_name = 'i_consistency_compose'
+
+
+class IConsistencyDecompose(IConsistencySemantic):
+    inst_name = 'i_consistency_decompose'
 
 
 class IConsistency3DObject(EvalUnit):
@@ -93,20 +100,13 @@ class IConsistency3DObject(EvalUnit):
                 data['auto_eval'] = [calculate_dreamsim(img1, img2) for img1, img2 in zip(data['image_list'], inst['ref_image_list'])]
         self.save()
 
-    def calculate_metrics(self):
-        print(f'Auto evaluation accuracy for {self.inst_name}: ', np.mean([np.mean(data['auto_eval']) for data in self.res_list]))
+    def compute_accuracy(self):
+        auto_eval_list = [np.mean(data['auto_eval']) for data in self.res_list]
+        return np.mean(auto_eval_list)
 
 
 class IConsistency3DScene(IConsistency3DObject):
     inst_name = 'i_consistency_3d_scene'
-
-
-class IConsistencyCompose(IConsistencySemantic):
-    inst_name = 'i_consistency_compose'
-
-
-class IConsistencyDecompose(IConsistencySemantic):
-    inst_name = 'i_consistency_decompose'
 
 
 class AConsistencyConversation(EvalUnit):
@@ -194,20 +194,23 @@ class AConsistencyConversation(EvalUnit):
             data['human_eval'] = [1.0 - interface.eval_list[i] if i != FAILED_TOKEN else 0.0 for i in data['human_eval']]
         self.save()
 
-    def calculate_metrics(self, threshold=0.86):
-        print(f'Auto evaluation accuracy for {self.inst_name}: ', np.mean([np.min(data['auto_eval']) for data in self.res_list]))
-        model_eval_list = [data['model_eval'] for data in self.res_list]
-        human_eval_list = [data['human_eval'] for data in self.res_list]
+    def compute_accuracy(self, threshold=0.86):
+        auto_eval_list = [np.mean(data['auto_eval']) for data in self.res_list]
+        model_eval_list = [np.mean([me > threshold for me in data['model_eval']]) for data in self.res_list]
+        return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
 
-        model_eval_cat = list(itertools.chain(*model_eval_list))
-        human_eval_cat = list(itertools.chain(*human_eval_list))
-        model_eval_cat = [e > threshold for e in model_eval_cat]
-        model_eval_list = [[e > threshold for e in me] for me in model_eval_list]
+    def compute_correlation(self, threshold=0.86):
+        model_eval_list = [res['model_eval'] for res in self.res_list]
+        human_eval_list = [res['human_eval'] for res in self.res_list]
 
-        print(f"Model evaluation accuracy for {self.inst_name}: ", np.mean([np.mean(e) for e in model_eval_list]))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean([np.mean(e) for e in human_eval_list]))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_cat, human_eval_cat))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_cat, human_eval_cat))
+        # # Optimal threshold
+        # model_eval_cat = list(itertools.chain(*model_eval_list))
+        # human_eval_cat = list(itertools.chain(*human_eval_list))
+        # threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
+
+        model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
+        human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class AConsistencyVariant(EvalUnit):
@@ -229,7 +232,7 @@ class AConsistencyVariant(EvalUnit):
                 data['wer'] = [wers[i] for i in data['transcript']]
                 data['transcript'] = [transcripts[i] for i in data['transcript']]
             else:
-                data['wer'] = [0.0 for _ in data['transcript']]
+                data['wer'] = [[0.0, 0.0, 0.0] for _ in data['transcript']]
         self.save()
         for data, inst in zip(self.res_list, self.inst_list):
             if 'transcript' in data:
@@ -255,10 +258,11 @@ class AConsistencyVariant(EvalUnit):
                 data['auto_eval'] = 0.0
         self.save()
 
-    def calculate_metrics(self):
-        print(f'Word Error Rate for {self.inst_name}: ', np.mean([data['wer'] for data in self.res_list]))
-        model_eval_list = [data['auto_eval'] for data in self.res_list]
-        print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
+    def compute_accuracy(self):
+        wer_list = [np.mean(data['wer']) for data in self.res_list]
+        auto_eval_list = [data['auto_eval'] for data in self.res_list]
+        return np.mean([w * a for w, a in zip(wer_list, auto_eval_list)])
+
 
 class IStructure(EvalUnit):
     inst_name = 'i_structure'
@@ -280,9 +284,9 @@ class IStructure(EvalUnit):
             data['auto_eval'] = float(mm_list in inst['order'])
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Structure accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        return np.mean(auto_eval_list)
 
 
 class AStructure(IStructure):
@@ -353,15 +357,14 @@ class ITCoherence(EvalUnit):
     def human_process_response(data, responses):
         pass
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        return np.mean(model_eval_list)
+
+    def compute_correlation(self):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        print(f"GPT evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        model_eval_list = np.concatenate([res['model_eval'] if isinstance(res['model_eval'], list) else [res['model_eval']] for res in self.res_list])
-        human_eval_list = np.concatenate([res['human_eval'] if isinstance(res['human_eval'], list) else [res['human_eval']]for res in self.res_list])
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class ITCoherenceCount(ITCoherence):
@@ -628,11 +631,16 @@ class ITCoherenceOCR(ITCoherence, IOCR):
                 data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip()
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
+        label_list = [[self.normalize_text(res['text'] if 'text' in res else '')] for res in self.res_list]
+        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list]
+        return self._compute_accuracy(label_list, model_eval_list)
+
+    def compute_correlation(self):
         label_list = [[self.normalize_text(res['text'] if 'text' in res else '')] for res in self.res_list]
         model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list]
         human_eval_list = [[self.normalize_text(res['human_eval'])] for res in self.res_list]
-        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
+        return self._compute_correlation(label_list, model_eval_list, human_eval_list)
 
 
 class ITCoherenceMath(ITCoherenceColor):
@@ -716,5 +724,4 @@ class ITCoherenceCode(ITCoherenceColor):
 
 
 if __name__ == '__main__':
-    a = ITCoherenceMath(model_name='ImageAgent', sample_size=2)
-    a.calculate_metrics()
+    pass

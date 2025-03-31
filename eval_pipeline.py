@@ -1,0 +1,163 @@
+from eval_image import *
+from eval_audio import *
+from eval_interleaved import *
+from utils import *
+
+import argparse
+
+
+class EvalPipeline:
+    def __init__(self, model_name, cat='i', sample_size=1):
+        assert cat in ['i', 'a', 'it', 'at']
+        self.model_name = model_name
+        self.cat = cat
+        self.sample_size = sample_size
+        if 'i' in cat:
+            self.eval_list = ['i_object_include', 'i_object_exclude', 'i_object_count', 'i_object_cot',
+                              'i_object_attribute', 'i_relation_two', 'i_relation_all', 'i_spacial_relative',
+                              'i_spacial_absolute', 'i_format_background', 'i_format_symmetric', 'i_ocr',
+                              'i_ocr_two', 'i_ocr_multi_lingual']
+            if 't' in cat:
+                self.eval_list += ['i_structure', 'i_consistency_semantic', 'i_consistency_3d_object','i_consistency_3d_scene',
+                                   'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
+                                   'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove','i_edit_object_modify',
+                                   'it_coherence_count', 'it_coherence_color', 'it_coherence_size', 'it_coherence_spacial_relative',
+                                   'it_coherence_spacial_absolute', 'it_coherence_ocr', 'it_coherence_code', 'it_coherence_math']
+        if 'a' in cat:
+            self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence',
+                              'a_speech_attribute', 'a_speech_chinese', 'a_speech_imitate', 'a_speech_modify',
+                              'a_music_instrument', 'a_music_tempo', 'a_music_intensity', 'a_music_exclude']
+            if 't' in cat:
+                self.eval_list += ['a_structure', 'a_consistency_conversation', 'a_consistency_variant']
+
+        if os.path.exists(f'./output/{model_name}/{cat}_eval.csv'):
+            self.eval_df = pd.read_csv(f'./output/{model_name}/{cat}_eval.csv')
+        else:
+            self.eval_df = pd.DataFrame({
+                'task': self.eval_list,
+                'accuracy': [None] * len(self.eval_list),
+                'human_accuracy': [None] * len(self.eval_list),
+                'correlation': [None] * len(self.eval_list)
+            })
+            os.makedirs(f'./output/{model_name}/', exist_ok=True)
+            self.eval_df.to_csv(f'./output/{model_name}/{cat}_eval.csv', index=False)
+
+    def eval_map(self, task_name):
+        task_name = ''.join([t.capitalize() if i > 0 else t.upper() for i, t in enumerate(task_name.split('_'))])
+        task_name = task_name.replace('Ocr', 'OCR').replace('Cot', 'CoT').replace('3d', '3D')
+        return eval(f"{task_name}(model_name='{self.model_name}', sample_size={self.sample_size})")
+
+    def evaluate(self):
+        for index, row in self.eval_df.iterrows():
+            if pd.isna(row['accuracy']):
+                task_name = row['task']
+                task = self.eval_map(task_name)
+                task.evaluate()
+                self.eval_df.at[index, 'accuracy'] = task.compute_accuracy()
+                self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+
+    def human_evaluate(self):
+        for index, row in self.eval_df.iterrows():
+            if pd.isna(row['human_accuracy']):
+                task_name = row['task']
+                task = self.eval_map(task_name)
+                pass
+                # TODO: a big interface is needed here...
+
+
+class EvalBenchmark:
+    def __init__(self, model_name=None, cat='i', sample_size=1):
+        assert cat in ['i', 'a', 'it', 'at']
+        self.model_name = model_name
+        self.cat = cat
+        self.sample_size = sample_size
+        self.pipelines = {}
+
+        if 'i' in cat:
+            base_model_list = []
+            if 't' not in cat:
+                base_model_list += ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3', 'StableDiffusion3_5']
+        if 'a' in cat:
+            base_model_list = []
+            if 't' not in cat:
+                base_model_list += []
+        for model_name in base_model_list:
+            pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
+            pipeline.evaluate()
+            self.pipelines[model_name] = pipeline
+
+    def rank_models(self, method='absolute'):
+        reshaped_dfs = []
+        for model_name, pipeline in self.pipelines.items():
+            temp_df = pipeline.eval_df[['task', 'accuracy']].copy()
+            temp_df.rename(columns={'accuracy': model_name}, inplace=True)
+            reshaped_dfs.append(temp_df)
+
+        combined_df = reshaped_dfs[0]
+        for i in range(1, len(reshaped_dfs)):
+            combined_df = pd.merge(combined_df, reshaped_dfs[i], on='task', how='inner')
+        model_names = self.pipelines.keys()
+        results = {'models': model_names}
+        combined_df.to_csv(f'./output/{self.cat}_eval.csv', index=False)
+        if method == 'absolute':
+            scores = combined_df[model_names].mean().tolist()
+            results['scores'] = scores
+            results['rank'] = self.rank_with_ties(scores)
+        elif method == 'relative':
+            scores_matrix = combined_df[model_names].values
+            min_vals = np.min(scores_matrix, axis=1, keepdims=True)
+            max_vals = np.max(scores_matrix, axis=1, keepdims=True)
+            normalized_rows = np.zeros_like(scores_matrix)
+            normalized_rows[:] = scores_matrix
+            normalized_rows = (scores_matrix - min_vals) / (max_vals - min_vals)
+            scores = normalized_rows.mean(axis=0).tolist()
+            results['scores'] = scores
+            results['rank'] = self.rank_with_ties(scores)
+        elif method == 'rank':
+            scores_matrix = combined_df[model_names].values
+            rank_matrix = np.zeros_like(scores_matrix)
+            for i in range(scores_matrix.shape[0]):
+                rank_matrix[i, :] = self.rank_with_ties(-scores_matrix[i, :])
+            scores = rank_matrix.mean(axis=0).tolist()
+            results['scores'] = scores
+            results['rank'] = self.rank_with_ties(scores)
+        else:
+            raise NotImplementedError
+
+        results = pd.DataFrame(results)
+        results.to_csv(f'./output/{self.cat}_avg.csv', index=False)
+        return results
+
+
+    @staticmethod
+    def rank_with_ties(values, ascending=False):
+        s = pd.Series(values)
+        ranks = s.rank(method='min', ascending=ascending).astype(int).tolist()
+        return ranks
+
+    def compute_correlation(self):
+        if 'a' in self.cat:
+            print('There is no baseline for audio generation evaluation.')
+            return
+        if self.cat == 't':
+            golden_reference = {'Imagen3': 88, 'Recraft3': 26, 'LumaPhoton': 21, 'Flux1_1Pro': 21,
+                                'Ideogram2': 20, 'Dalle3': -22, 'StableDiffusion3_5': -56}
+            res = self.rank_models(method='absolute')
+            print(calculate_pearson([golden_reference[m] for m in res['models'].to_list()], res['scores'].to_list()))
+        else:
+            pass
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    parser.add_argument('--model_name', type=str, default='Dalle3', help='Name of the model.')
+    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    args = parser.parse_args()
+
+    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    pipeline.evaluate()
+
+    # benchmark = EvalBenchmark(sample_size=4)
+    # benchmark.rank_models(method='absolute')
+    # benchmark.compute_correlation()

@@ -1,0 +1,20 @@
+{"instruction": "Add the object in <image_1> sitting between the food in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [0, 20], "ref_image_list": [40]}
+{"instruction": "Add the object in <image_1> sitting on the wooden stool in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [1, 21], "ref_image_list": [41]}
+{"instruction": "Add the object in <image_1> to the middle of light pole in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [2, 22], "ref_image_list": [42]}
+{"instruction": "Add the object in <image_1> climbing the suitcase in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [3, 23], "ref_image_list": [43]}
+{"instruction": "Add the object in <image_1> on the man's head in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [4, 24], "ref_image_list": [44]}
+{"instruction": "Add the object in <image_1> underneath the range hoods on the counter in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [5, 25], "ref_image_list": [45]}
+{"instruction": "Add the object in <image_1> sitting on top of the clock in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [6, 26], "ref_image_list": [46]}
+{"instruction": "Add the object in <image_1> to the right of the toilet near the corner in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [7, 27], "ref_image_list": [47]}
+{"instruction": "Add the object in <image_1> to the empty part of the wall in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [8, 28], "ref_image_list": [48]}
+{"instruction": "Add the object in <image_1> to the man on the left in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [9, 29], "ref_image_list": [49]}
+{"instruction": "Add the object in <image_1> to the right of mouse on the desk in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [10, 30], "ref_image_list": [50]}
+{"instruction": "Add the object in <image_1> to the left of the plate on the train in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [11, 31], "ref_image_list": [51]}
+{"instruction": "Add the object in <image_1> between two sinks in the mirror in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [12, 32], "ref_image_list": [52]}
+{"instruction": "Replace the birthday cake in <image_0> by the object in <image_1>. Keep the rest of <image_0> unchanged.", "image_list": [13, 33], "ref_image_list": [53]}
+{"instruction": "Add the object in <image_1> between the window and the mirror in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [14, 34], "ref_image_list": [54]}
+{"instruction": "Add the object in <image_1> between the sinks in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [15, 35], "ref_image_list": [55]}
+{"instruction": "Add the object in <image_1> on the keyboard in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [16, 36], "ref_image_list": [56]}
+{"instruction": "Add the object in <image_1> to the empty side of the sink in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [17, 37], "ref_image_list": [57]}
+{"instruction": "Replace the mouse in <image_0> by the object in <image_1>. Keep the rest of <image_0> unchanged.", "image_list": [18, 38], "ref_image_list": [58]}
+{"instruction": "Add the object in <image_1> in front of the baby elephant in <image_0>. Keep the rest of <image_0> unchanged.", "image_list": [19, 39], "ref_image_list": [59]}

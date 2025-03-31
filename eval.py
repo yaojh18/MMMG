@@ -1,9 +1,8 @@
-import json
+import os.path
 
-import numpy as np
-import torchaudio
-
-from model import *
+from model_image import *
+from model_audio import *
+from model_interleaved import *
 from interface import *
 
 
@@ -106,9 +105,8 @@ class EvalUnit:
         pass
 
     @abstractmethod
-    def calculate_metrics(self):
+    def compute_accuracy(self, return_list=False):
         pass
 
-
-class EvalPipeline:
-    pass
+    def compute_correlation(self):
+        return -1.0, -1.0

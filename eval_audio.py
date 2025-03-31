@@ -1,8 +1,3 @@
-import itertools
-import os
-
-import matplotlib.pyplot as plt
-
 from eval import *
 
 
@@ -59,7 +54,12 @@ class ASound(EvalUnit):
             data['human_eval'] = [1.0 - float(interface.eval_list[i]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         self.save()
 
-    def calculate_metrics(self, threshold=0.6):
+    def compute_accuracy(self, threshold=0.6):
+        model_eval_list = [res['model_eval'] for res in self.res_list]
+        model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
+        return np.mean(model_eval_list)
+
+    def compute_correlation(self, threshold=0.6):
         model_eval_list = [res['model_eval'] for res in self.res_list]
         human_eval_list = [res['human_eval'] for res in self.res_list]
 
@@ -70,11 +70,7 @@ class ASound(EvalUnit):
 
         model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
         human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
-
-        print(f"Model evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class ASoundBeginEnd(ASound):
@@ -197,10 +193,10 @@ class ASpeechAttribute(EvalUnit):
             data['model_eval_score'][3] = speed_s
         self.save()
 
-    def calculate_metrics(self):
-        print(f'Word Error Rate for {self.inst_name}: ', np.mean([data['wer'] for data in self.res_list]))
-        model_eval_list = [np.min([me for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
-        print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
+    def compute_accuracy(self):
+        wer_list = [data['wer'] for data in self.res_list]
+        model_eval_list = [np.mean([me for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
+        return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
 
 
 class ASpeechChinese(ASpeechAttribute):
@@ -243,16 +239,21 @@ class ASpeechImitate(EvalUnit):
             data['human_eval'] = 1.0 - human_eval
         self.save()
 
-    def calculate_metrics(self, threshold=0.865):
-        print(f'Word Error Rate for {self.inst_name}: ', np.mean([data['wer'] for data in self.res_list]))
+    def compute_accuracy(self, threshold=0.865):
+        wer_list = [data['wer'] for data in self.res_list]
+        model_eval_list = [data['model_eval'] for data in self.res_list]
+        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
+
+    def compute_correlation(self, threshold=0.865):
         model_eval_list = [data['model_eval'] for data in self.res_list]
         human_eval_list = [data['human_eval'] for data in self.res_list]
-        model_eval_list = [model_eval > threshold for model_eval in model_eval_list]
 
-        print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluated accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Pearson Correlation of for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement of for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+        # # Optimal threshold
+        # threshold = find_optimal_threshold(model_eval_list, human_eval_list)
+
+        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class ASpeechModify(EvalUnit):
@@ -272,9 +273,9 @@ class ASpeechModify(EvalUnit):
             data['auto_eval'] = score
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        return np.mean(auto_eval_list)
 
 
 class AMusicAttribute(EvalUnit):
@@ -309,7 +310,6 @@ class AMusicAttribute(EvalUnit):
                     ref_audio = librosa.resample(ref_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
                 ref_audio_list.append(ref_audio)
             data['model_eval'] = compute_clapscore_aa(data['audio_list'][0], ref_audio_list)
-            data['model_eval_score'] = float(data['model_eval'] > 0.58)
         self.save()
 
     def evaluate_tempo(self):
@@ -332,7 +332,7 @@ class AMusicAttribute(EvalUnit):
             data['auto_eval_score'] = float(abs(inst['tempo'] - bpm) < 5)
         self.save()
 
-    def evaluate(self, attribute_list=('genre', 'instrument')):
+    def evaluate(self):
         self.evaluate_instrument()
         self.evaluate_tempo()
 
@@ -371,16 +371,43 @@ class AMusicAttribute(EvalUnit):
             data['human_eval_score'] = float(inst['instrument'] in data['human_eval'])
         self.save()
 
-    def calculate_metrics(self):
-        model_eval_list = [data['model_eval_score'] for data in self.res_list if 'model_eval_score' in data]
-        human_eval_list = [data['human_eval_score'] for data in self.res_list if 'human_eval_score' in data]
 
-        print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluated accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
-        auto_eval_list = [data['auto_eval_score'] for data in self.res_list if 'auto_eval_score' in data]
-        print(f"Auto evaluated accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+class AMusicInstrument(EvalUnit):
+    def __init__(self, model_name: str, sample_size=4):
+        self.eval_unit = AMusicAttribute(model_name=model_name, sample_size=sample_size)
+
+    def evaluate(self):
+        self.eval_unit.evaluate_instrument()
+
+    def human_evaluate(self):
+        self.eval_unit.human_evaluate()
+
+    def compute_accuracy(self, threshold=0.58):
+        model_eval_list = [data['model_eval'] for data in self.eval_unit.res_list if 'model_eval' in data]
+        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        return np.mean(model_eval_list)
+
+    def compute_correlation(self, threshold=0.58):
+        model_eval_list = [data['model_eval'] for data in self.eval_unit.res_list if 'model_eval' in data]
+        human_eval_list = [data['human_eval_score'] for data in self.eval_unit.res_list if 'human_eval_score' in data]
+
+        # # Optimal threshold
+        # threshold = find_optimal_threshold(model_eval_list, human_eval_list)
+
+        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+
+
+class AMusicTempo(EvalUnit):
+    def __init__(self, model_name: str, sample_size=4):
+        self.eval_unit = AMusicAttribute(model_name=model_name, sample_size=sample_size)
+
+    def evaluate(self):
+        self.eval_unit.evaluate_tempo()
+
+    def compute_accuracy(self):
+        auto_eval_list = [data['auto_eval_score'] for data in self.eval_unit.res_list if 'auto_eval_score' in data]
+        return np.mean(auto_eval_list)
 
 
 class AMusicIntensity(EvalUnit):
@@ -419,9 +446,9 @@ class AMusicIntensity(EvalUnit):
             # plt.show()
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
         auto_eval_list = [data['model_eval_score'] for data in self.res_list]
-        print(f"Auto evaluated accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        return np.mean(auto_eval_list)
 
 
 class AMusicExclude(EvalUnit):
@@ -436,7 +463,6 @@ class AMusicExclude(EvalUnit):
                     ref_audio = librosa.resample(ref_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
                 ref_audio_list.append(ref_audio)
             data['model_eval'] = compute_clapscore_aa(data['audio_list'][0], ref_audio_list)
-            data['model_eval_score'] = float(data['model_eval'] < 0.585)
         self.save()
 
     def human_evaluate(self):
@@ -460,14 +486,20 @@ class AMusicExclude(EvalUnit):
             data['human_eval'] = float(human_eval)
         self.save()
 
-    def calculate_metrics(self):
-        model_eval_list = [data['model_eval_score'] for data in self.res_list]
-        human_eval_list = [data['human_eval'] for data in self.res_list]
-        print(f"Model evaluated accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluated accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+    def compute_accuracy(self, threshold=0.585):
+        model_eval_list = [data['model_eval'] for data in self.res_list]
+        model_eval_list = [float(model_eval < threshold) for model_eval in model_eval_list]
+        return np.mean(model_eval_list)
 
+    def compute_correlation(self, threshold=0.585):
+        model_eval_list = [data['model_eval'] for data in self.res_list]
+        human_eval_list = [data['human_eval'] for data in self.res_list]
+
+        # # Optimal threshold
+        # threshold = find_optimal_threshold([1.0 - m for m in model_eval_list], human_eval_list)
+
+        model_eval_list = [float(model_eval < threshold) for model_eval in model_eval_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 if __name__ == '__main__':

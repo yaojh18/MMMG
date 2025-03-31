@@ -45,9 +45,10 @@ class IObject(EvalUnit):
             data['model_eval'] = [parsed_responses[idx] for idx in data['model_eval']]
         self.save()
 
-        if self.inst_name == 'i_object_counting':
+        if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['model_eval'] = float(data['model_eval'] == (inst['count'] - 2))
+                data['model_eval'] = [float(data['model_eval'][0] == (inst['count'] - 2))]
+            self.save()
 
     def human_evaluate(self):
         human_inst_list = []
@@ -69,20 +70,21 @@ class IObject(EvalUnit):
             data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
         self.save()
 
-        if self.inst_name == 'i_object_counting':
+        if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['human_eval'] = float(data['human_eval'] == (inst['count'] - 2))
+                data['human_eval'] = [float(data['human_eval'][0] == (inst['count'] - 2))]
             self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self, return_list=False):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        if not return_list:
+            return np.mean(model_eval_list)
+        return model_eval_list
+
+    def compute_correlation(self):
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        print(f"GPT evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        model_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
-        human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class IObjectInclude(IObject):
@@ -99,7 +101,7 @@ class IObjectInclude(IObject):
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return 1.0 if res.lower().startswith('yes') else 0.0
+        return 1.0 if float('yes' in res.strip().lower()) else 0.0
 
     @staticmethod
     def human_judge_process_func(res: str):
@@ -108,6 +110,14 @@ class IObjectInclude(IObject):
 
 class IObjectAttribute(IObjectInclude):
     inst_name = 'i_object_attribute'
+
+    @staticmethod
+    def instruction_func(obj):
+        return I_OBJECT_EXIST_COT_PROMPT(obj)
+
+    @staticmethod
+    def gpt_judge_process_func(res: str):
+        return 1.0 if float('yes' in res.strip().lower()[-20:]) else 0.0
     
 
 class IObjectExclude(IObjectInclude):
@@ -115,7 +125,7 @@ class IObjectExclude(IObjectInclude):
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return 1.0 if res.lower().startswith('no') else 0.0
+        return 1.0 if float('no' in res.strip().lower()) else 0.0
 
     @staticmethod
     def human_judge_process_func(res: str):
@@ -207,15 +217,14 @@ class ISpacial(EvalUnit):
             data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) for idx in data['human_eval']]
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        return np.mean(model_eval_list)
+
+    def compute_correlation(self):
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(model_eval_list))
-        print(f"Human evaluation accuracy for {self.inst_name}: ", np.mean(human_eval_list))
-        model_eval_list = np.concatenate([res['model_eval'] for res in self.res_list])
-        human_eval_list = np.concatenate([res['human_eval'] for res in self.res_list])
-        print(f"Pearson Correlation for {self.inst_name}: ", calculate_pearson(model_eval_list, human_eval_list))
-        print(f"Agreement for {self.inst_name}: ", calculate_agreement(model_eval_list, human_eval_list))
+        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class ISpacialAbsolute(ISpacial):
@@ -345,11 +354,16 @@ class IOCR(EvalUnit):
             data['human_eval'] = human_eval.lower().strip()
         self.save()
 
-    def calculate_metrics(self, ignore_null=True):
-        label_list = [[self.normalize_text(inst['text'])] for inst, res in zip(self.inst_list, self.res_list) if res['model_eval'] != '' or not ignore_null]
-        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list if res['model_eval'] != '' or not ignore_null]
-        human_eval_list = [[self.normalize_text(res['human_eval'])] for res in self.res_list if res['model_eval'] != '' or not ignore_null]
-        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
+    def compute_accuracy(self, return_list=False):
+        label_list = [[self.normalize_text(inst['text'])] for inst in self.inst_list]
+        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list]
+        return self._compute_accuracy(label_list, model_eval_list, return_list)
+
+    def compute_correlation(self):
+        label_list = [[self.normalize_text(inst['text'])] for inst in self.inst_list]
+        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list]
+        human_eval_list = [[self.normalize_text(res['human_eval'])] for res in self.res_list]
+        return self._compute_correlation(label_list, model_eval_list, human_eval_list)
 
     @staticmethod
     def normalize_text(text):
@@ -359,17 +373,21 @@ class IOCR(EvalUnit):
         normalized_text = ''.join(char for char in normalized_text if unicodedata.category(char) != 'Mn')
         return normalized_text if normalized_text != '' else FAILED_TOKEN
 
-    def _calculate_metrics(self, label_list, model_eval_list, human_eval_list):
+    def _compute_accuracy(self, label_list, model_eval_list, return_list=False):
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
                     for model_eval, label in zip(model_eval_list, label_list)]
-        print(f"GPT evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
-        wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
+        if not return_list:
+            return np.mean(wer_list)
+        return wer_list
+
+    def _compute_correlation(self, label_list, model_eval_list, human_eval_list):
+        wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
+        human_wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
                     for human_eval, label in zip(human_eval_list, label_list)]
-        print(f"Human evaluation Word Error Rate for {self.inst_name}: ", np.mean(wer_list))
-        wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=human_eval), 1.0)
-                    for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
-        print(f"Agreement for {self.inst_name}: ", np.mean(wer_list))
+        model_wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
+                    for model_eval, label in zip(model_eval_list, label_list)]
+        return np.mean(human_wer_list), calculate_pearson(model_wer_list, human_wer_list)
 
 
 class IOCRTwo(IOCR):
@@ -442,11 +460,16 @@ class IOCRTwo(IOCR):
                 data['human_eval'] = [interface.eval_list[i].lower().strip() for i in data['human_eval']]
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
+        label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
+        model_eval_list = [[self.normalize_text(t) for t in res['model_eval']] for res in self.res_list]
+        return self._compute_accuracy(label_list, model_eval_list)
+
+    def compute_correlation(self):
         label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
         model_eval_list = [[self.normalize_text(t) for t in res['model_eval']] for res in self.res_list]
         human_eval_list = [[self.normalize_text(t) for t in res['human_eval']] for res in self.res_list]
-        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
+        return self._compute_correlation(label_list, model_eval_list, human_eval_list)
     
 
 class IOCRGerman(IOCR):
@@ -468,11 +491,11 @@ class IOCRChinese(IOCR):
 
         queries = []
         for data in self.res_list:
-            queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_OCR_CHINESE_PROMPT, images=data['image_list']))
-        responses = batch(query_openai, queries, model='gemini-2.0-flash-exp', temperature=0.0, dtype='gemini')
+            queries.append(form_gemini_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
+        responses = batch(query_gemini, queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0, num_worker=2)
         for data, res in zip(self.res_list, responses):
             data['model_eval'].append(''.join(re.findall(r'[\u4e00-\u9fff]', res)))
-            data['model_eval_score'] = ''.join(set(res['model_eval'][0]).intersection(set(res['model_eval'][1])))
+            data['model_eval_score'] = ''.join(set(data['model_eval'][0]).intersection(set(data['model_eval'][1])))
         self.save()
 
     def human_evaluate(self):
@@ -487,12 +510,36 @@ class IOCRChinese(IOCR):
             data['human_eval'] = human_eval.lower().strip()
         self.save()
 
-    def calculate_metrics(self):
-        label_list = [inst['text'] for inst in self.inst_list]
-        model_eval_list = [res['model_eval_score'] for res in self.res_list]
-        human_eval_list = [res['human_eval'] for res in self.res_list]
+    def compute_accuracy(self):
+        label_list = [[inst['text']] for inst in self.inst_list]
+        model_eval_list = [[res['model_eval_score']] for res in self.res_list]
+        return self._compute_accuracy(label_list, model_eval_list)
 
-        self._calculate_metrics(label_list, model_eval_list, human_eval_list)
+    def compute_correlation(self):
+        label_list = [[inst['text']] for inst in self.inst_list]
+        model_eval_list = [[res['model_eval_score']] for res in self.res_list]
+        human_eval_list = [[res['human_eval']] for res in self.res_list]
+        return self._compute_correlation(label_list, model_eval_list, human_eval_list)
+
+
+class IOCRMultiLingual(EvalUnit):
+    def __init__(self, model_name: str, sample_size=4):
+        self.chinese = IOCRChinese(model_name=model_name, sample_size=sample_size)
+        self.german = IOCRGerman(model_name=model_name, sample_size=sample_size)
+
+    def evaluate(self):
+        self.chinese.evaluate()
+        self.german.evaluate()
+
+    def human_evaluate(self):
+        self.chinese.human_evaluate()
+        self.german.human_evaluate()
+
+    def compute_accuracy(self):
+        return (self.chinese.compute_accuracy() + self.german.compute_accuracy()) / 2.0
+
+    def compute_correlation(self):
+        return (self.chinese.compute_correlation() + self.german.compute_correlation()) / 2.0
 
 
 class IFormatBackground(EvalUnit):
@@ -526,22 +573,18 @@ class IFormatBackground(EvalUnit):
             data['auto_eval'] = color_condition(cropped_image, inst['color'])
         self.save()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
+        return np.mean(auto_eval_list)
 
 
-class IFormatSymmetric(EvalUnit):
+class IFormatSymmetric(IFormatBackground):
     inst_name = 'i_format_symmetric'
 
     def evaluate(self):
         for data, inst in zip(self.res_list, self.inst_list):
             data['auto_eval'] = symmetry_condition(data['image_list'][0], inst['symmetry_type'])
         self.save()
-
-    def calculate_metrics(self):
-        auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
 
 
 class IEdit(EvalUnit):
@@ -569,19 +612,17 @@ class IEdit(EvalUnit):
         self.save()
         super().evaluate()
 
-    def calculate_metrics(self):
+    def compute_accuracy(self):
+        model_eval_list = super().compute_accuracy(return_list=True)
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
-        super().calculate_metrics()
+        return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
+
+    def compute_correlation(self):
+        super().compute_correlation()
 
 
 class IEditText(IEdit, IOCR):
     inst_name = 'i_edit_text'
-
-    def calculate_metrics(self):
-        auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        print(f"Auto evaluation accuracy (SSIM) for {self.inst_name}: ", np.mean(auto_eval_list))
-        IOCR.calculate_metrics(self, ignore_null=False)
 
 
 class IEditObjectAdd(IEdit, IObjectInclude):
@@ -602,25 +643,29 @@ class IEditAdd(EvalUnit):
     def evaluate(self):
         self.load_inst_mm()
         for data, inst in zip(self.res_list, self.inst_list):
-            origin_image = inst['image_list'][0].convert('RGB')
+            origin_image = inst['ref_image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
-            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            width_margin, height_margin = origin_image.size[0] // 5, origin_image.size[1] // 5
             bbox = (max(inst['bbox'][0] - width_margin, 0),
                     max(inst['bbox'][1] - height_margin, 0),
                     min(inst['bbox'][2] + width_margin, origin_image.size[0]),
                     min(inst['bbox'][3] + height_margin, origin_image.size[1])
                     )
+            cropped_image = image.crop(bbox)
+            cropped_origin_image = origin_image.crop(bbox)
             origin_arr = np.array(origin_image)
             arr = np.array(image)
             origin_arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
             arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
-            data['auto_eval'] = [calculate_ssim(arr, origin_arr), calculate_dreamsim(data['image_list'][0], inst['ref_image_list'][0])]
+            data['auto_eval'] = [calculate_ssim(arr, origin_arr), calculate_dreamsim(cropped_image, cropped_origin_image)]
         self.save()
 
-
-    def calculate_metrics(self):
+    def compute_accuracy(self):
         auto_eval_list = [np.mean(res['auto_eval']) for res in self.res_list]
-        print(f"Auto evaluation accuracy for {self.inst_name}: ", np.mean(auto_eval_list))
+        return np.mean(auto_eval_list)
+
+    def compute_correlation(self):
+        return None, None
 
 
 class IEditColor(IEditAdd):
@@ -628,5 +673,5 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    a = ISpacialAbsolute(model_name='Dalle3')
-    a.calculate_metrics()
+    a = IOCRChinese(model_name='Ideogram2', sample_size=4)
+    a.evaluate()

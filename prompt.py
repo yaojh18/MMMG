@@ -12,7 +12,7 @@ I_SPACIAL_RELATIVE_UD = lambda obj1, obj2: f"Looking at the 2D composition of th
 
 I_OCR_ENGLISH_PROMPT = lambda obj: f"### Instruction:\nRecognize all the major texts (ignore small texts on the edge) ONLY on {obj}. Only recognize texts in Latin alphabet characters (a-z, A-Z). Do not correct the text if it is misspelled, nonsense or wrong, output the most direct recognition result. Do not call any function.\n### Output format:\nOutput an executable Python list of all recognized texts from top to down, from left to right, e.g. [\"Hello World\", \"Good morning\"]. Output an empty list if the there is no text on {obj}."
 
-I_OCR_CHINESE_PROMPT = "### Instruction:\nYou are a conservative text recognition model. Your task is to recognize all the major Chinese characters in the given image. If the Chinese characters in the image are wrongly written or distorted, you should return empty result. Do not call any function.\n### Output format:\nOny a string of all recognized texts from top to down, from left to right. Do not add quotations."
+I_OCR_CHINESE_PROMPT = "### Instruction:\nYou are a conservative text recognition model. Your task is to recognize all the major Chinese characters in the given image. If the Chinese characters in the image are wrongly written or distorted, you should return an empty string. Do not call any function.\n### Output format:\nOny a string of all recognized texts from top to down, from left to right. Do not add quotations."
 
 with open('./prompts/i_agent.txt', 'r', encoding='utf-8') as f:
     I_AGENT_PROMPT = ''.join(f.readlines())
