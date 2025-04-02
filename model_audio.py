@@ -22,6 +22,28 @@ class TangoFlux(Model):
             })
         return res_list
 
+class Tango2(Model):
+    def __init__(self):
+        super().__init__()
+        from tango import Tango
+        self.model = Tango("declare-lab/tango2-full")
+
+    def generate(self, query_list):
+        res_list = []
+        random.seed(0)
+        for query in query_list:
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [librosa.to_mono(
+                    librosa.resample(
+                        self.model.generate(query['instruction'], seed=random.randint(0, 1000)).numpy(),
+                        orig_sr=16000,
+                        target_sr=SAMPLE_RATE
+                    ))]
+            })
+        return res_list
 
 class MusicGen(Model):
     def __init__(self):
