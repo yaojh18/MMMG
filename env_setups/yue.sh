@@ -1,5 +1,5 @@
 ## set up yue environments
-conda create -n yue python=3.8 && conda activate yue
+conda create -n yue python=3.8 -y && conda activate yue
 conda config --set channel_priority false
 conda install pytorch torchvision torchaudio cudatoolkit=11.8 -c pytorch -c nvidia
 pip install -r <(curl -sSL https://raw.githubusercontent.com/multimodal-art-projection/YuE/main/requirements.txt)
