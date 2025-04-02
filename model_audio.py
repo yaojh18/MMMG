@@ -36,12 +36,11 @@ class Tango2(Model):
                 'query': query,
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
-                'audio_list': [librosa.to_mono(
-                    librosa.resample(
-                        self.model.generate(query['instruction'], seed=random.randint(0, 1000)).numpy(),
-                        orig_sr=16000,
-                        target_sr=SAMPLE_RATE
-                    ))]
+                'audio_list': [librosa.resample(
+                    self.model.generate(query['instruction'], seed=random.randint(0, 1000)).numpy(),
+                    orig_sr=16000,
+                    target_sr=SAMPLE_RATE
+                )]
             })
         return res_list
 
