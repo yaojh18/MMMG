@@ -44,6 +44,40 @@ class Tango2(Model):
             })
         return res_list
 
+
+class StableAudio(Model):
+    def __init__(self):
+        super().__init__()
+        from huggingface_hub import login
+        from diffusers import StableAudioPipeline        
+        login(token=HF_KEY)
+        self.model=StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16)
+        self.model = self.model.to("cuda")        
+        
+    def generate(self, query_list):
+        res_list = []
+        random.seed(0)
+        for query in query_list:
+            audio = pipe(
+                query['instruction'],
+                num_inference_steps=200,
+                audio_end_in_s=10.0,
+                num_waveforms_per_prompt=3,
+                generator=torch.Generator("cuda").manual_seed(random.randint(0, 1000))
+            ).audios
+            
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [librosa.resample(
+                    librosa.to_mono(audio[0].float().cpu().numpy()),
+                    orig_sr=self.model.vae.sampling_rate,
+                    target_sr=SAMPLE_RATE
+                )]
+            })
+        return res_list
+
 class MusicGen(Model):
     def __init__(self):
         from transformers import MusicgenForConditionalGeneration
