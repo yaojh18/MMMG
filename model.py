@@ -58,6 +58,53 @@ class VoxInstruct(Model):
         return res_list
 
 
+class VoiceLDM(Model):
+    def __init__(self):
+        super().__init__()
+        import torch
+        import torchaudio
+        from voiceldm import VoiceLDMPipeline
+        self.pipe = VoiceLDMPipeline(device="cuda")
+        self.num_inference_steps = 50
+        self.desc_guidance_scale = 7
+        self.cont_guidance_scale = 7
+        
+    def generate(self, query_list, language='english'):
+        """
+        This model does not require a formated output list, thus can only be used for intermediate results.
+        """
+        input_list = []
+        res_list = []
+        for idx, query in enumerate(query_list):            
+            desc_prompt = query['style']    
+            if query['reference'] != '':                
+                shutil.copy(query['reference'], f'./models/VoxInstruct/input/{idx}.wav')
+                audio_prompt = f'./models/VoxInstruct/input/{idx}.wav'
+                cont_prompt = None
+            else:
+                audio_prompt = None
+                cont_prompt = query['text']
+                    
+            audio = self.pipe(
+                desc_prompt=desc_prompt,
+                cont_prompt=cont_prompt,
+                audio_prompt=audio_prompt,
+                num_inference_steps=self.num_inference_steps,
+                desc_guidance_scale=self.desc_guidance_scale,
+                cont_guidance_scale=self.cont_guidance_scale,
+                device="cuda",
+            )
+        
+            audio=audio[0].float().cpu().numpy().shape
+            audio=librosa.resample(audio, orig_sr=16000, target_sr=SAMPLE_RATE)            
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [audio],
+            })
+        return res_list
+
 class OpenAIModel(Model):
     def __init__(self, model_name, system_prompt=''):
         self.model_name = model_name
@@ -89,3 +136,5 @@ class GeminiModel(Model):
             audios=[librosa.load(audio)[0] for audio in query['audio_list']] if 'audio_list' in query else [],
         ) for query in query_list]
         return batch(query_gemini, mllm_query_list, model=self.model_name, temperature=0.2)
+
+ISpeechImitate(model_name="AudioAgent")
