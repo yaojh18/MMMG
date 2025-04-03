@@ -69,3 +69,46 @@ class MusicGen(Model):
                 'audio_list': [output],
             })
         return res_list
+
+class YuE(Model):
+    def __init__(self):
+
+        import os
+        import shutil
+        os.chdir("./models/YuE/inference")
+            
+    def generate(self, query_list):
+        output_list = []
+        lyrics = "[verse]\n\n[chorus]\n\n[outro]"
+        query_list = [query['instruction'] for query in query_list]
+
+        for query in tqdm(query_list):
+
+            ## generate music in cmd
+            os.system(f"""python infer.py \
+                        --cuda_idx 0 \
+                        --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
+                        --stage2_model m-a-p/YuE-s2-1B-general \
+                        --genre_txt {query} \
+                        --lyrics_txt {lyrics} \
+                        --run_n_segments 2 \
+                        --stage2_batch_size 4 \
+                        --output_dir ../output \
+                        --max_new_tokens 500 \
+                        --repetition_penalty 1.1
+                        """)
+            
+            file = [i for i in os.listdir('../output/') if '-'.join(query.split()) in i][0]            
+            output_list.append(librosa.load('file')[0])    
+            shutil.rmtree('../output/')
+            os.makedirs('../output/')
+            
+        res_list = []
+        for query, output in zip(query_list, output_list):
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [output],
+            })
+        return res_list
