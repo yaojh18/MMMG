@@ -25,6 +25,7 @@ class TangoFlux(Model):
 class Tango2(Model):
     def __init__(self):
         super().__init__()
+        os.chdir("./models/tango/")
         from tango import Tango
         self.model = Tango("declare-lab/tango2-full")
 
