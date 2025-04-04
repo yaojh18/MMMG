@@ -25,9 +25,9 @@ class TangoFlux(Model):
 class Tango2(Model):
     def __init__(self):
         super().__init__()
-        import os
-        from tango import Tango        
+        import os        
         os.chdir("./models/tango/")
+        from tango import Tango
         self.model = Tango("declare-lab/tango2-full")
 
     def generate(self, query_list):
@@ -60,7 +60,7 @@ class StableAudio(Model):
         res_list = []
         random.seed(0)
         for query in query_list:
-            audio = pipe(
+            audio = self.model(
                 query['instruction'],
                 num_inference_steps=200,
                 audio_end_in_s=10.0,
