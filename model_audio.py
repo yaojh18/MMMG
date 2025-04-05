@@ -29,15 +29,22 @@ class Tango2(Model):
         self.model = Tango("declare-lab/tango2")
 
     def generate(self, query_list):
+
+        import os
         res_list = []
         random.seed(0)
         for query in query_list:
+
+            ## generate audio (the generated audio is in integer type; not float)
+            ## save it & reload it changes it to float type
+            audio=self.model.generate(query['instruction'])#, seed=random.randint(0, 1000)).numpy(),
+            sf.write("audio.wav", audio, samplerate=16000)            
             res_list.append({
                 'query': query,
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
                 'audio_list': [librosa.resample(
-                    self.model.generate(query['instruction']).numpy(),#, seed=random.randint(0, 1000)).numpy(),
+                    librosa.load("audio.wav", sr=16000)[0],
                     orig_sr=16000,
                     target_sr=SAMPLE_RATE
                 )]
