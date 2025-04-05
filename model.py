@@ -22,6 +22,20 @@ class Model:
         """
         pass
 
+
+class BlankModel(Model):
+    def generate(self, query_list):
+        res_list = []
+        for query in enumerate(query_list):
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [np.random.randn(1000*SAMPLE_RATE)],
+            })
+        return res_list
+
+
 ### Tool models
 
 class VoxInstruct(Model):
