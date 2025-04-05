@@ -78,30 +78,23 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
 
 
 def form_openai_mm_query(text, images=[], audios=[]):
-    texts = re.split(r'<(?:image|audio)_start><(?:image|audio)_\d+><(?:image|audio)_end>', text)
-    modalities = re.findall(r'<((?:image|audio)_\d+)>', text)
     message = []
-    for t, mm in zip(texts[:-1], modalities):
-        if t != '':
-            message.append({"type": "text", "text": t})
-        mm_name, mm_idx = mm.split('_')
-        if mm_name == 'image':
-            message.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{encode_image(images[int(mm_idx)])}"
-                }
-            })
-        else:
-            message.append({
-                "type": "input_audio",
-                "input_audio": {
-                    "data": encode_audio(audios[int(mm_idx)]),
-                    "format": "wav",
-                }
-            })
-    if texts[-1] != '':
-        message.append({"type": "text", "text": texts[-1]})
+    for image in images:
+        message.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{encode_image(image)}"
+            }
+        })
+    for audio in audios:
+        message.append({
+            "type": "input_audio",
+            "input_audio": {
+                "data": encode_audio(audio),
+                "format": "wav",
+            }
+        })
+    message.append({"type": "text", "text": text})
     return [{
         'role': 'user',
         'content': message
@@ -111,10 +104,10 @@ def form_openai_mm_query(text, images=[], audios=[]):
 def form_gemini_mm_query(text, images=[], audios=[]):
     message = [text] + images
     for audio in audios:
-        message.append({
-            "mime_type": "audio/wav",
-            "data": encode_audio(audio, decode=False)
-        })
+        message.append(types.Part.from_bytes(
+            data=encode_audio(audio, decode=False),
+            mime_type='audio/wav',
+        ))
     return message
 
 

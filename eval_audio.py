@@ -1,3 +1,7 @@
+from scipy.signal import find_peaks
+from scipy.stats import linregress
+from libs.SpeechGenderCls import get_gender
+
 from eval import *
 
 
@@ -85,17 +89,23 @@ class ASoundBeginEnd(ASound):
         for data, inst in zip(self.res_list, self.inst_list):
             idx_list.append([])
             if 'start' in inst:
-                audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 3])
-                label_list.append(inst['start'])
-                human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
-                idx_list[-1].append(idx)
-                idx += 1
+                if len(data['audio_list']) != 1:
+                    idx_list.append(FAILED_TOKEN)
+                else:
+                    audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 3])
+                    label_list.append(inst['start'])
+                    human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+                    idx_list[-1].append(idx)
+                    idx += 1
             if 'end' in inst:
-                audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 3:])
-                label_list.append(inst['end'])
-                human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
-                idx_list[-1].append(idx)
-                idx += 1
+                if len(data['audio_list']) != 1:
+                    idx_list.append(FAILED_TOKEN)
+                else:
+                    audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 3:])
+                    label_list.append(inst['end'])
+                    human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+                    idx_list[-1].append(idx)
+                    idx += 1
         return audio_list, label_list, human_eval_res_list, idx_list
 
 
@@ -109,6 +119,9 @@ class ASoundInclude(ASound):
         idx_list = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                idx_list.append([FAILED_TOKEN])
+                continue
             begin = round(inst['range'][0] * len(data['audio_list'][0]))
             end = round(inst['range'][1] * len(data['audio_list'][0]))
             audio_list.append(data['audio_list'][0][begin: end])
@@ -123,12 +136,21 @@ class ASoundCoT(ASound):
     inst_name = 'a_sound_cot'
 
     def _evaluate(self):
-        return (
-            [data['audio_list'][0] for data in self.res_list],
-            [inst['target'] for inst in self.inst_list],
-            self.res_list,
-            [[i] for i in range(len(self.res_list))]
-        )
+        audio_list = []
+        label_list = []
+        human_eval_res_list = []
+        idx_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                idx_list.append([FAILED_TOKEN])
+                continue
+            audio_list.append(data['audio_list'][0])
+            label_list.append(inst['target'])
+            human_eval_res_list.append(data)
+            idx_list.append([idx])
+            idx += 1
+        return audio_list, label_list, human_eval_res_list, idx_list
 
 
 class ASoundSilence(ASound):
@@ -141,6 +163,9 @@ class ASoundSilence(ASound):
         idx_list = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                idx_list.append([FAILED_TOKEN, FAILED_TOKEN])
+                continue
             audio_segs = audio_segmentation(data['audio_list'][0])
             if len(audio_segs) != 2:
                 idx_list.append([FAILED_TOKEN, FAILED_TOKEN])
@@ -159,43 +184,49 @@ class ASpeechAttribute(EvalUnit):
     language = 'english'
 
     def evaluate(self):
+        res_list = []
+        inst_list = []
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['auto_eval'] = [FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN]
+                data['auto_eval_score'] = [0.0, 0.0, 0.0, 0.0]
+                data['transcript'] = ''
+                data['wer'] = 0.0
+                continue
+            res_list.append(data)
+            inst_list.append(inst)
         transcripts, wers = transcribe_speech(
-            [data['audio_list'][0] for data in self.res_list],
-            [inst['text'] for inst in self.inst_list],
+            [data['audio_list'][0] for data in res_list],
+            [inst['text'] for inst in inst_list],
             self.language
         )
-        for trans, wer, data in zip(transcripts, wers, self.res_list):
+        for trans, wer, data in zip(transcripts, wers, res_list):
             data['transcript'] = trans
             data['wer'] = wer
         self.save()
 
-        from libs.SpeechGenderCls import get_gender
-        genders = get_gender([f'./output/{self.model_name}/audio/{self.inst_name}_{i}.wav' for i in range(len(self.res_list))])
-        for data, inst, gender in zip( self.res_list, self.inst_list, genders):
-            if 'model_eval' in data and len(data['model_eval']) == 4:
-                data['model_eval'][0] = gender
-                data['model_eval_score'][0] = float(gender == ('male', 'female').index(inst['gender']))
-            else:
-                data['model_eval'] = [gender, FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN]
-                data['model_eval_score'] = [float(gender == ('male', 'female').index(inst['gender'])), FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN]
+        genders = get_gender([f'./output/{self.model_name}/audio/{self.inst_name}_{i}.wav' for i in range(len(res_list))])
+        for data, inst, gender in zip(res_list, inst_list, genders):
+            data['auto_eval'] = [gender, FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN]
+            data['auto_eval_score'] = [float(gender == ('male', 'female').index(inst['gender'])), FAILED_TOKEN, FAILED_TOKEN, FAILED_TOKEN]
         self.save()
 
-        for data, inst in zip(self.res_list, self.inst_list):
+        for data, inst in zip(res_list, inst_list):
             pitch, pitch_s = calculate_pitch(data['audio_list'][0], data['model_eval'][0], inst)
-            if data['model_eval'][0] == 0:
-                data['model_eval'][1] = pitch
-                data['model_eval_score'][1] = pitch_s
+            if data['auto_eval'][0] == 0:
+                data['auto_eval'][1] = pitch
+                data['auto_eval_score'][1] = pitch_s
             else:
-                data['model_eval'][2] = pitch
-                data['model_eval_score'][2] = pitch_s
+                data['auto_eval'][2] = pitch
+                data['auto_eval_score'][2] = pitch_s
             speed, speed_s = calculate_speed(data['audio_list'][0], data['transcript'], inst, self.language)
-            data['model_eval'][3] = speed
-            data['model_eval_score'][3] = speed_s
+            data['auto_eval'][3] = speed
+            data['auto_eval_score'][3] = speed_s
         self.save()
 
     def compute_accuracy(self):
         wer_list = [data['wer'] for data in self.res_list]
-        model_eval_list = [np.mean([me for me in data['model_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
+        model_eval_list = [np.mean([me for me in data['auto_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
         return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
 
 
@@ -208,35 +239,61 @@ class ASpeechImitate(EvalUnit):
     inst_name = 'a_speech_imitate'
 
     def evaluate(self):
-        transcripts, wers = transcribe_speech(
-            [data['audio_list'][0] for data in self.res_list],
-            [inst['text'] for inst in self.inst_list],
-        )
-        for trans, wer, data in zip(transcripts, wers, self.res_list):
-            data['transcript'] = trans
-            data['wer'] = wer
-        self.save()
+        audio_list = []
+        text_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['transcript'] = FAILED_TOKEN
+                continue
+            audio_list.append(data['audio_list'][0])
+            text_list.append(inst['text'])
+            data['transcript'] = idx
+            idx += 1
+        transcripts, wers = transcribe_speech(audio_list)
+        for data in self:
+            data['wer'] = wers[data['transcript']] if data['transcript'] != FAILED_TOKEN else 0.0
+            data['transcript'] = transcripts[data['transcript']] if data['transcript'] != FAILED_TOKEN else ''
 
         self.load_inst_mm()
-        audio_list = [data['audio_list'][0] for data in self.res_list]
-        ref_audio_list = [inst['audio_list'][0] for inst in self.inst_list]
+        audio_list = []
+        ref_audio_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['model_eval'] = FAILED_TOKEN
+                continue
+            audio_list.append(data['audio_list'][0])
+            ref_audio_list.append(inst['audio_list'][0])
+            data['model_eval'] = idx
+            idx += 1
         sim_scores = calculate_speech_similarity(audio_list, ref_audio_list)
-        for data, sim in zip(self.res_list, sim_scores):
-            data['model_eval'] = sim
+        for data in self.res_list:
+            data['model_eval'] = sim_scores[data['model_eval']] if data['model_eval'] != FAILED_TOKEN else 0.0
         self.save()
 
     def human_evaluate(self):
-        ref_audio_list = [inst['audio_list'][0] for inst in self.inst_list]
+        ref_audio_list = []
+        human_data_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['human_eval'] = FAILED_TOKEN
+                continue
+            ref_audio_list.append(inst['audio_list'][0])
+            human_data_list.append(data)
+            data['human_eval'] = idx
+            idx += 1
         interface = MultiLabelInterface(
             label_list=('Yes', 'No'),
-            eval_inst_list=['Are the speeches coming from the same speaker?'] * len(self.res_list),
-            data_list=self.res_list,
+            eval_inst_list=['Are the speeches coming from the same speaker?'] * len(ref_audio_list),
+            data_list=human_data_list,
             ref_list=ref_audio_list,
             mm_type='a'
         )
         interface.start()
-        for data, human_eval in zip(self.res_list, interface.eval_list):
-            data['human_eval'] = 1.0 - human_eval
+        for data in self.res_list:
+            data['human_eval'] = float(interface.eval_list[data['human_eval']] == 1) if data['human_eval'] != FAILED_TOKEN else 0.0
         self.save()
 
     def compute_accuracy(self, threshold=0.865):
@@ -260,9 +317,18 @@ class ASpeechModify(EvalUnit):
     inst_name = 'a_speech_modify'
 
     def evaluate(self):
-        transcripts, _ = transcribe_speech([data['audio_list'][0] for data in self.res_list])
-        for trans, data in zip(transcripts, self.res_list):
-            data['transcript'] = trans
+        audio_list = []
+        idx = 0
+        for data in self.res_list:
+            if len(data['audio_list']) != 1:
+                data['transcript'] = FAILED_TOKEN
+                continue
+            audio_list.append(data['audio_list'][0])
+            data['transcript'] = idx
+            idx += 1
+        transcripts, _ = transcribe_speech(audio_list)
+        for data in self:
+            data['transcript'] = transcripts[data['transcript']] if data['transcript'] != FAILED_TOKEN else ''
         self.save()
 
         scores = text_instruction_following_verify(
@@ -303,6 +369,9 @@ class AMusicAttribute(EvalUnit):
         # self.save()
 
         for data, inst in zip(res_list, inst_list):
+            if len(data['audio_list']) != 1:
+                data['model_eval'] = 0.0
+                continue
             ref_audio_list = []
             for i in range(100):
                 ref_audio, sr = librosa.load(f'./datasets/openmic-2018/{inst["instrument"]}/{i}.mp3')
@@ -325,6 +394,10 @@ class AMusicAttribute(EvalUnit):
         from beat_this.inference import Audio2Beats
         model = Audio2Beats(checkpoint_path="final0", device="cuda", dbn=False)
         for data, inst in zip(res_list, inst_list):
+            if len(data['audio_list']) != 1:
+                data['auto_eval'] = 0.0
+                data['auto_eval_score'] = 0.0
+                continue
             audio = librosa.effects.trim(data['audio_list'][0])[0]
             beats, _ = model(audio, SAMPLE_RATE)
             bpm = len(beats) * SAMPLE_RATE * 60 / audio.shape[0]
@@ -353,21 +426,34 @@ class AMusicAttribute(EvalUnit):
             for i in range(5):
                 back_list[-1].append(f'./seed_instruction/audio/{instrument}_{i}.wav')
 
-        interface = MultiLabelInterface(
-            label_list=instruments,
-            eval_inst_list=[f'What is the dominant instrument played the given audio?\n'
+        human_inst_list = []
+        human_data_list = []
+        idx = 0
+        for data in self.res_list:
+            if len(data['audio_list']) != 1:
+                data['human_eval'] = FAILED_TOKEN
+                continue
+            human_inst_list.append(f'What is the dominant instrument played the given audio?\n'
                             f'Reminder:\n'
                             f'1. Failed generation should be considered as none of the above.\n'
-                            f'2. Choose multiple labels only when you are unsure or the given audio can fall into different types.'] * len(self.res_list),
-            data_list=res_list,
+                            f'2. Choose multiple labels only when you are unsure or the given audio can fall into different types.')
+            human_data_list.append(data)
+            data['human_eval'] = idx
+            idx += 1
+        interface = MultiLabelInterface(
+            label_list=instruments,
+            eval_inst_list=human_inst_list,
+            data_list=human_data_list,
             back_list=back_list,
-            shuffle=True,
             multi_choice=True,
             mm_type='a'
         )
         interface.start()
-        for data, inst, human_eval in zip(res_list, inst_list, interface.eval_list):
-            data['human_eval'] = [instruments[he] for he in human_eval]
+        for data, inst in zip(res_list, inst_list):
+            if data['human_eval'] != FAILED_TOKEN:
+                data['human_eval'] = [instruments[i] for i in interface.eval_list[data['human_eval']]]
+            else:
+                data['human_eval'] = []
             data['human_eval_score'] = float(inst['instrument'] in data['human_eval'])
         self.save()
 
@@ -414,12 +500,13 @@ class AMusicIntensity(EvalUnit):
     inst_name = 'a_music_intensity'
 
     def evaluate(self):
-        from scipy.signal import find_peaks
-        from scipy.stats import linregress
         timestep = 3.0
         distance = 4
 
         for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['auto_eval'] = 0.0
+                continue
             audio = librosa.effects.trim(data['audio_list'][0])[0]
             audio = audio[round(0.1 * SAMPLE_RATE): -round(0.1 * SAMPLE_RATE)]
             if inst['intensity'][0] == 'start':
@@ -433,21 +520,11 @@ class AMusicIntensity(EvalUnit):
             slope, _, _, _, stderr = linregress(times[peaks], norm_intensity[peaks])
             trend = 'fade in' if (slope > 0.19 and stderr < 0.8) else \
                 ('fade out' if (slope < -0.19 and stderr < 0.8) else FAILED_TOKEN)
-            data['model_eval'][3] = slope
-            data['model_eval_score'][3] = float(trend == inst['intensity'][1])
-
-            # Visualize
-            # plt.plot(times, norm_intensity * 100.0, label='Intensity', alpha=0.6)
-            # plt.plot(times[peaks], norm_intensity[peaks] * 100.0, label='Peaks', alpha=0.6)
-            # plt.xlabel('Time (s)')
-            # plt.ylabel('Intensity (%)')
-            # plt.title(f'Normalized slop: {slope:.3f}, Stderr: {stderr:.3f}')
-            # plt.legend()
-            # plt.show()
+            data['auto_eval'] = float(trend == inst['intensity'][1])
         self.save()
 
     def compute_accuracy(self):
-        auto_eval_list = [data['model_eval_score'] for data in self.res_list]
+        auto_eval_list = [data['auto_eval'] for data in self.res_list]
         return np.mean(auto_eval_list)
 
 
@@ -456,6 +533,9 @@ class AMusicExclude(EvalUnit):
 
     def evaluate(self):
         for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['model_eval'] = 1.0
+                continue
             ref_audio_list = []
             for i in range(100):
                 ref_audio, sr = librosa.load(f'./datasets/openmic-2018/{inst["instrument"]}/{i}.mp3')
@@ -473,17 +553,27 @@ class AMusicExclude(EvalUnit):
             back_list[-1].append(instrument)
             for i in range(5):
                 back_list[-1].append(f'./seed_instruction/audio/{instrument}_{i}.wav')
+        human_inst_list = []
+        human_data_list = []
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['human_eval'] = FAILED_TOKEN
+                continue
+            human_inst_list.append(f"Does {inst['instrument']} exist in the given music?")
+            human_data_list.append(data)
+            data['human_eval'] = idx
+            idx += 1
         interface = MultiLabelInterface(
             label_list=('Yes', 'No'),
-            eval_inst_list=[f"Does {inst['instrument']} exist in the given music?" for inst in self.inst_list],
-            data_list=self.res_list,
+            eval_inst_list=human_inst_list,
+            data_list=human_data_list,
             back_list=back_list,
-            shuffle=True,
             mm_type='a'
         )
         interface.start()
-        for data, human_eval in zip(self.res_list, interface.eval_list):
-            data['human_eval'] = float(human_eval)
+        for data in self.res_list:
+            data['human_eval'] = float(interface.eval_list[data['human_eval']]) if 'human_eval' != FAILED_TOKEN else 0.0
         self.save()
 
     def compute_accuracy(self, threshold=0.585):
@@ -503,4 +593,4 @@ class AMusicExclude(EvalUnit):
 
 
 if __name__ == '__main__':
-    pass
+    a = ASpeechImitate(model_name='AudioAgent', sample_size=1)

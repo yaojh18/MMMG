@@ -3,6 +3,8 @@ import re
 import shutil
 from abc import abstractmethod
 
+import numpy as np
+
 from utils import *
 
 
@@ -24,6 +26,19 @@ class Model:
         pass
 
 ### Tool models
+
+class BlankAudioModel(Model):
+    def generate(self, query_list):
+        output_list = []
+        for query in query_list:
+            output_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [np.zeros(SAMPLE_RATE)],
+            })
+        return output_list
+
 
 class VoxInstruct(Model):
     def generate(self, query_list):
@@ -69,11 +84,10 @@ class OpenAIModel(Model):
         """
         This model will not return a formated output list, thus can only be used for intermediate results.
         """
-        mllm_query_list = [self.system_prompt + form_openai_mm_query(
-            query['instruction'] + (IMAGE_TOKEN(0) if 'image_list' in query else ''),
+        mllm_query_list = [self.system_prompt + form_openai_mm_query(query['instruction'],
             images=[Image.open(image) for image in query['image_list']] if 'image_list' in query else []
         ) for query in query_list]
-        return batch(query_openai, mllm_query_list, model=self.model_name, temperature=0.2)
+        return batch(query_openai, mllm_query_list, model=self.model_name, temperature=0.0)
 
 
 class GeminiModel(Model):
@@ -90,4 +104,4 @@ class GeminiModel(Model):
             images=[Image.open(image) for image in query['image_list']] if 'image_list' in query else [],
             audios=[librosa.load(audio)[0] for audio in query['audio_list']] if 'audio_list' in query else [],
         ) for query in query_list]
-        return batch(query_gemini, mllm_query_list, model=self.model_name, temperature=0.2)
+        return batch(query_gemini, mllm_query_list, model=self.model_name, temperature=0.0)

@@ -5,6 +5,6 @@ google-genai
 skimage
 sklearn
 transformers
-gradio_image_prompter
 gradio
 evaluate
+scipy

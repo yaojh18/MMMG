@@ -19,10 +19,7 @@ class IConsistencySemantic(EvalUnit):
             else:
                 data['model_eval'] = []
             for image, target in zip(data['image_list'], inst['object']):
-                query_list.append(form_openai_mm_query(
-                    IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(target),
-                    images=[image]
-                ))
+                query_list.append(form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(target), images=[image]))
                 data['model_eval'].append(idx)
                 idx += 1
 
@@ -366,7 +363,7 @@ class ITCoherenceCount(ITCoherence):
             data['model_eval'] = FAILED_TOKEN
             return
         obj, cnt = res.group(1), int(res.group(2))
-        queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_COUNT_PROMPT(obj), images=data['image_list']))
+        queries.append(form_openai_mm_query(I_OBJECT_COUNT_PROMPT(obj), images=data['image_list']))
         data['object'], data['count'], data['model_eval'] = obj, cnt, self.idx
         self.idx += 1
 
@@ -399,7 +396,7 @@ class ITCoherenceColor(ITCoherence):
             data['model_eval'] = FAILED_TOKEN
             return
         queries += [form_openai_mm_query(
-            IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(f'exactly one {obj} and the color of {obj} being mostly {col}'),
+            I_OBJECT_EXIST_COT_PROMPT(f'exactly one {obj} and the color of {obj} being mostly {col}'),
             images=data['image_list'],
         ) for obj, col in obj2col.items()]
         data['obj2col'], data['model_eval'] = obj2col, [self.idx, self.idx + 1, self.idx + 2]
@@ -433,8 +430,7 @@ class ITCoherenceSize(ITCoherenceColor):
             data['model_eval'] = FAILED_TOKEN
             return
         rel_map = {'size': 'larger', 'area': 'larger', 'volume': 'bigger', 'length': 'longer', 'height': 'higher'}
-        queries += [form_openai_mm_query(
-            IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(
+        queries += [form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(
                 f"exactly one {obj_list[i]}, exactly one {obj_list[j]} and the "
                 f"{obj_list[j]} being obviously {rel_map[inst['relation']]} than the {obj_list[i]}"),
             images=data['image_list']) for i in range(3) for j in range(i + 1, 3)]
@@ -530,8 +526,8 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
         for data in self.res_list:
             for i in range(2):
                 if data['model_eval'][i] == 1.0:
-                    queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_SPACIAL_ABSOLUTE_PROMPT(
-                        data['object'][i][0]), images=data['image_list']))
+                    queries.append(form_openai_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(data['object'][i][0]),
+                                                        images=data['image_list']))
                     data['model_eval'][i] = self.idx
                     self.idx += 1
         responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
@@ -552,8 +548,8 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
         if not opt_list or len(opt_list) != 2 or not (set(opt_list) < {'a', 'b', 'c', 'd'}):
             data['model_eval'] = FAILED_TOKEN
             return
-        queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(
-            f"exactly one {obj}"), images=data['image_list']) for obj in inst['object']]
+        queries += [form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
+                                         images=data['image_list']) for obj in inst['object']]
         data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
                                               [[a, ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
         self.idx += 2
@@ -572,7 +568,7 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
 
 class ITCoherenceOCR(ITCoherence, IOCR):
     inst_name = 'it_coherence_ocr'
-    default_eval = FAILED_TOKEN
+    default_eval = ''
 
     def model_process_data(self, data, inst, res, queries):
         res = re.search(inst['format'], res)
@@ -580,10 +576,7 @@ class ITCoherenceOCR(ITCoherence, IOCR):
             data['model_eval'] = FAILED_TOKEN
             return
         text = res.group(1)
-        queries.append(form_openai_mm_query(
-            IMAGE_TOKEN(0) + I_OCR_ENGLISH_PROMPT(inst['object']),
-            images=data['image_list']
-        ))
+        queries.append(form_openai_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
         data['text'], data['model_eval'] = text, self.idx
         self.idx += 1
 
@@ -602,9 +595,9 @@ class ITCoherenceOCR(ITCoherence, IOCR):
         self.idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             if 'text' in data:
-                human_inst_list.append(f"Please type the major texts (ignore small texts on the edge) on {inst['object']} from top to down, "
-                            f"from left to right in the given image. Leave empty if the there is no valid Latin "
-                            f"character in the given image. Ignore small texts in the corner.")
+                human_inst_list.append(f"Please type the major texts (ignore small texts on the edge) on {inst['object']}"
+                                       f" from top to down, from left to right in the given image. Leave empty if the there "
+                                       f"is no valid Latin character in the given image. Ignore small texts in the corner.")
                 human_res_list.append(data)
                 data['human_eval'] = self.idx
                 self.idx += 1

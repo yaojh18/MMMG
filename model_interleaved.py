@@ -44,9 +44,13 @@ class OmniGen(Model):
 
 ### Agent models
 class AudioAgent(Model):
+    sound_model_name = 'BlankAudioModel'
+    speech_model_name = 'VoxInstruct'
+    music_model_name = 'BlankAudioModel'
+
     def __init__(self, mllm='gemini-1.5-pro'):
         self.mllm = GeminiModel(mllm, system_prompt=A_AGENT_PROMPT)
-        self.models = (TangoFlux(), VoxInstruct(), MusicGen())
+        self.models = (eval(f'{self.sound_model_name}()'), eval(f'{self.speech_model_name}()'), eval(f'{self.music_model_name}()'))
 
     def generate(self, query_list):
         responses = self.mllm.generate(query_list)

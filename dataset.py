@@ -138,4 +138,4 @@ def paraphrasing_dataset(file_name):
 
 
 if __name__ == '__main__':
-    paraphrasing_dataset('a_speech_modify')
+    pass
