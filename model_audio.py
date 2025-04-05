@@ -24,32 +24,24 @@ class TangoFlux(Model):
 
 class Tango2(Model):
     def __init__(self):
-        super().__init__()
+        super().__init__()        
         from models.tango.tango import Tango
         self.model = Tango("declare-lab/tango2")
 
     def generate(self, query_list):
-
-        import os
         res_list = []
         random.seed(0)
         for query in tqdm(query_list):
-
-            ## generate audio (the generated audio is in integer type; not float)
-            ## save it & reload it changes it to float type
-            audio=self.model.generate(query['instruction'])#, seed=random.randint(0, 1000)).numpy(),
-            sf.write("audio.wav", audio, samplerate=16000)            
             res_list.append({
                 'query': query,
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
                 'audio_list': [librosa.resample(
-                    librosa.load("audio.wav", sr=16000)[0],
+                    self.model.generate(query['instruction']).astype(np.float32)/np.iinfo(np.int16).max,
                     orig_sr=16000,
                     target_sr=SAMPLE_RATE
                 )]
             })
-            os.remove("audio.wav")
         return res_list
 
 
