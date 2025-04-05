@@ -25,6 +25,20 @@ class Model:
         """
         pass
 
+
+class BlankModel(Model):
+    def generate(self, query_list):
+        res_list = []
+        for query in enumerate(query_list):
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [np.random.randn(1000*SAMPLE_RATE)],
+            })
+        return res_list
+
+
 ### Tool models
 
 class BlankAudioModel(Model):
@@ -74,6 +88,56 @@ class VoxInstruct(Model):
             })
         return res_list
 
+
+class VoiceLDM(Model):
+    def __init__(self):
+        super().__init__()
+        from voiceldm import VoiceLDMPipeline
+        self.model = VoiceLDMPipeline(device="cuda:0")
+        self.num_inference_steps = 50
+        self.desc_guidance_scale = 7
+        self.cont_guidance_scale = 7
+        
+    def generate(self, query_list, language='english'):
+        """
+        This model does not require a formated output list, thus can only be used for intermediate results.
+        """
+        if os.path.exists('./models/VoiceLDM/input/'):
+            shutil.rmtree('./models/VoiceLDM/input/')
+            os.makedirs('./models/VoiceLDM/input/')
+        else:
+            os.makedirs('./models/VoiceLDM/input/')
+            
+        res_list = []
+        for idx, query in enumerate(query_list):
+            cont_prompt = query['text']
+            if query['reference'] != '':                
+                shutil.copy(query['reference'], f'./models/VoiceLDM/input/{idx}.wav')
+                audio_prompt = f'./models/VoiceLDM/input/{idx}.wav'
+                desc_prompt = None
+            else:
+                audio_prompt = None
+                desc_prompt = query['style']
+                    
+            audio = self.model(
+                desc_prompt=desc_prompt,
+                cont_prompt=cont_prompt,
+                audio_prompt=audio_prompt,
+                num_inference_steps=self.num_inference_steps,
+                desc_guidance_scale=self.desc_guidance_scale,
+                cont_guidance_scale=self.cont_guidance_scale,
+                device="cuda:0",
+            )
+        
+            audio=audio[0].float().cpu().numpy()
+            audio=librosa.resample(audio, orig_sr=16000, target_sr=SAMPLE_RATE)            
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [audio],
+            })
+        return res_list
 
 class OpenAIModel(Model):
     def __init__(self, model_name, system_prompt=''):
