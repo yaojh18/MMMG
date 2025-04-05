@@ -33,7 +33,7 @@ class Tango2(Model):
         import os
         res_list = []
         random.seed(0)
-        for query in query_list:
+        for query in tqdm(query_list):
 
             ## generate audio (the generated audio is in integer type; not float)
             ## save it & reload it changes it to float type
