@@ -61,10 +61,8 @@ class VoxInstruct(Model):
 class VoiceLDM(Model):
     def __init__(self):
         super().__init__()
-        import torch
-        import torchaudio
         from voiceldm import VoiceLDMPipeline
-        self.pipe = VoiceLDMPipeline(device="cuda")
+        self.model = VoiceLDMPipeline(device="cuda:0")
         self.num_inference_steps = 50
         self.desc_guidance_scale = 7
         self.cont_guidance_scale = 7
@@ -73,29 +71,32 @@ class VoiceLDM(Model):
         """
         This model does not require a formated output list, thus can only be used for intermediate results.
         """
-        input_list = []
+        if os.path.exists('./models/VoiceLDM/input/'):
+            shutil.rmtree('./models/VoiceLDM/input/')
+            os.makedirs('./models/VoiceLDM/input/')
+            
         res_list = []
-        for idx, query in enumerate(query_list):            
-            desc_prompt = query['style']    
+        for idx, query in enumerate(query_list):
+            desc_prompt = query['style']                    
             if query['reference'] != '':                
-                shutil.copy(query['reference'], f'./models/VoxInstruct/input/{idx}.wav')
-                audio_prompt = f'./models/VoxInstruct/input/{idx}.wav'
+                shutil.copy(query['reference'], f'./models/VoiceLDM/input/{idx}.wav')
+                audio_prompt = f'./models/VoiceLDM/input/{idx}.wav'
                 cont_prompt = None
             else:
                 audio_prompt = None
                 cont_prompt = query['text']
                     
-            audio = self.pipe(
+            audio = self.model(
                 desc_prompt=desc_prompt,
                 cont_prompt=cont_prompt,
                 audio_prompt=audio_prompt,
                 num_inference_steps=self.num_inference_steps,
                 desc_guidance_scale=self.desc_guidance_scale,
                 cont_guidance_scale=self.cont_guidance_scale,
-                device="cuda",
+                device="cuda:0",
             )
         
-            audio=audio[0].float().cpu().numpy().shape
+            audio=audio[0].float().cpu().numpy()
             audio=librosa.resample(audio, orig_sr=16000, target_sr=SAMPLE_RATE)            
             res_list.append({
                 'query': query,
