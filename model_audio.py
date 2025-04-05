@@ -25,10 +25,8 @@ class TangoFlux(Model):
 class Tango2(Model):
     def __init__(self):
         super().__init__()
-        import os        
-        os.chdir("./models/tango/")
-        from tango import Tango
-        self.model = Tango("declare-lab/tango2-full")
+        from models.tango.tango import Tango
+        self.model = Tango("declare-lab/tango2")
 
     def generate(self, query_list):
         res_list = []
@@ -39,7 +37,7 @@ class Tango2(Model):
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
                 'audio_list': [librosa.resample(
-                    self.model.generate(query['instruction'], seed=random.randint(0, 1000)).numpy(),
+                    self.model.generate(query['instruction']),#, seed=random.randint(0, 1000)).numpy(),
                     orig_sr=16000,
                     target_sr=SAMPLE_RATE
                 )]
