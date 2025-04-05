@@ -85,13 +85,13 @@ class ASoundBeginEnd(ASound):
         for data, inst in zip(self.res_list, self.inst_list):
             idx_list.append([])
             if 'start' in inst:
-                audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 2])
+                audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 3])
                 label_list.append(inst['start'])
                 human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
                 idx_list[-1].append(idx)
                 idx += 1
             if 'end' in inst:
-                audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 2:])
+                audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 3:])
                 label_list.append(inst['end'])
                 human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
                 idx_list[-1].append(idx)

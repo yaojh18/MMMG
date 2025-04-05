@@ -33,10 +33,13 @@ class IObject(EvalUnit):
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
-            queries += [form_openai_mm_query(
-                IMAGE_TOKEN(0) + self.instruction_func(obj),
-                images=data['image_list']) for obj in obj_list
-            ]
+            if self.inst_name == 'i_object_include' or self.inst_name == 'i_object_exclude':
+                queries.append(form_openai_mm_query(IMAGE_TOKEN(0) + I_SCENE_PROMPT(obj_list[0]), images=data['image_list']))
+                queries += [form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(obj),
+                    images=data['image_list']) for obj in obj_list[1:]]
+            else:
+                queries += [form_openai_mm_query(IMAGE_TOKEN(0) + self.instruction_func(obj),
+                    images=data['image_list']) for obj in obj_list]
             data['model_eval'] = list(range(idx, idx + len(obj_list)))
             idx += len(obj_list)
         responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
@@ -56,7 +59,7 @@ class IObject(EvalUnit):
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
-            human_inst_list += [self.human_instruction_func(obj) for obj in obj_list]
+            human_inst_list += [self.human_instruction_func(inst['object'])]
             human_res_list += [data] * len(obj_list)
             data['human_eval'] = list(range(idx, idx + len(obj_list)))
             idx += len(obj_list)
@@ -93,31 +96,41 @@ class IObjectInclude(IObject):
 
     @staticmethod
     def instruction_func(obj):
-        return I_OBJECT_EXIST_PROMPT(obj)
+        return I_OBJECT_EXIST_COT_PROMPT(obj)
 
     @staticmethod
-    def human_instruction_func(obj):
-        return f"Is/Are there {obj} in the given image?\n"
+    def human_instruction_func(obj_list):
+        if len(obj_list) == 1:
+            return f"Is/Are there {obj_list[0]} in the given image?\n"
+        else:
+            return f"Is the given image about {obj_list[0]} and are there {', '.join(obj_list[1:])} in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return 1.0 if float('yes' in res.strip().lower()) else 0.0
+        return 1.0 if float('yes' in res.strip().lower()[-20:]) else 0.0
 
     @staticmethod
     def human_judge_process_func(res: str):
         return 1.0 if res == 0 else 0.0
 
+    def compute_accuracy(self, return_list=False):
+        if self.inst_name != 'i_object_include':
+            return super().compute_accuracy(return_list)
+        model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
+        if not return_list:
+            return np.mean(model_eval_list)
+        return model_eval_list
+
+    def compute_correlation(self):
+        if self.inst_name != 'i_object_include':
+            return super().compute_correlation()
+        human_eval_list = [float(res['human_eval'][0] == 1.0) * np.mean(res['human_eval'][1:]) for res in self.res_list]
+        model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+
 
 class IObjectAttribute(IObjectInclude):
     inst_name = 'i_object_attribute'
-
-    @staticmethod
-    def instruction_func(obj):
-        return I_OBJECT_EXIST_COT_PROMPT(obj)
-
-    @staticmethod
-    def gpt_judge_process_func(res: str):
-        return 1.0 if float('yes' in res.strip().lower()[-20:]) else 0.0
     
 
 class IObjectExclude(IObjectInclude):
@@ -125,11 +138,26 @@ class IObjectExclude(IObjectInclude):
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return 1.0 if float('no' in res.strip().lower()) else 0.0
+        return 1.0 if float('no' in res.strip().lower()[-20:]) else 0.0
 
     @staticmethod
     def human_judge_process_func(res: str):
         return 1.0 if res == 1 else 0.0
+
+    def compute_accuracy(self, return_list=False):
+        if self.inst_name != 'i_object_exclude':
+            return super().compute_accuracy(return_list)
+        model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
+        if not return_list:
+            return np.mean(model_eval_list)
+        return model_eval_list
+
+    def compute_correlation(self):
+        if self.inst_name != 'i_object_exclude':
+            return super().compute_correlation()
+        human_eval_list = [float(res['human_eval'][0] == 0.0) * np.mean(res['human_eval'][1:]) for res in self.res_list]
+        model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class IObjectCoT(IObjectInclude):
@@ -138,11 +166,11 @@ class IObjectCoT(IObjectInclude):
 
     @staticmethod
     def instruction_func(obj):
-        return f"Is the given image about {obj}? Answer only yes or no.\n"
+        return I_OBJECT_EXIST_COT_PROMPT(obj)
 
     @staticmethod
-    def human_instruction_func(obj):
-        return f"Is the given image about {obj}?\n"
+    def human_instruction_func(obj_list):
+        return f"Is/Are there {obj_list[0]} in the given image?\n"
 
 
 class IObjectCount(IObject):
@@ -154,8 +182,8 @@ class IObjectCount(IObject):
         return I_OBJECT_COUNT_PROMPT(obj)
 
     @staticmethod
-    def human_instruction_func(obj):
-        return f"How many {obj} are there in the given image?\n"
+    def human_instruction_func(obj_list):
+        return f"How many {obj_list[0]} are there in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):
@@ -169,20 +197,8 @@ class IObjectCount(IObject):
 class IRelationTwo(IObjectInclude):
     inst_name = 'i_relation_two'
 
-    def evaluate(self):
-        queries = []
-        for data, inst in zip(self.res_list, self.inst_list):
-            queries += [form_openai_mm_query(
-                IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(inst['object']),
-                images=data['image_list'])
-            ]
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-        for i, data in enumerate(self.res_list):
-            data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:])]
-        self.save()
 
-
-class IRelationAll(IRelationTwo):
+class IRelationAll(IObjectInclude):
     inst_name = 'i_relation_all'
 
 
@@ -234,13 +250,13 @@ class ISpacialAbsolute(ISpacial):
         queries = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
-            queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(f"exactly one {obj}"),
+            queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
                                              images=data['image_list']) for obj, _ in inst['constraint']]
             data['model_eval'] = list(range(idx, idx + len(inst['constraint'])))
             idx += len(inst['constraint'])
         responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
         for data in self.res_list:
-            data['model_eval'] = [float('yes' in responses[i].strip().lower()) for i in data['model_eval']]
+            data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) for i in data['model_eval']]
         self.save()
 
         queries = []
@@ -397,12 +413,12 @@ class IOCRTwo(IOCR):
         queries = []
         for data, inst in zip(self.res_list, self.inst_list):
             queries.append(form_openai_mm_query(
-                IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(inst['object']),
+                IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(inst['object']),
                 images=data['image_list']
             ))
         responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
         for data, res in zip(self.res_list, responses):
-            if res.lower().startswith('yes'):
+            if 'yes' in res.strip().lower()[-20:]:
                 data['model_eval'] = [0.0, 0.0]
             else:
                 data['model_eval'] = [FAILED_TOKEN, FAILED_TOKEN]
@@ -587,6 +603,41 @@ class IFormatSymmetric(IFormatBackground):
         self.save()
 
 
+class IFormatBorder(IFormatBackground):
+    inst_name = 'i_format_border'
+
+    def evaluate(self):
+        for data, inst in zip(self.res_list, self.inst_list):
+            width, height = data['image_list'][0].size
+            border_width = round(width * 0.1)
+            border_height = round(height * 0.1)
+
+            top_border = data['image_list'][0].crop((0, 0, width, border_height))
+            bottom_border = data['image_list'][0].crop((0, height - border_height, width, height))
+            left_border = data['image_list'][0].crop((0, 0, border_width, height))
+            right_border = data['image_list'][0].crop((width - border_width, 0, width, height))
+
+            left_border = left_border.rotate(90, expand=True)
+            right_border = right_border.rotate(90, expand=True)
+            max_width = max(top_border.width, bottom_border.width, left_border.width, right_border.width)
+            total_height = top_border.height + bottom_border.height + left_border.height + right_border.height
+            new_image = Image.new('RGB', (max_width, total_height), (255, 255, 255))
+            y_offset = 0
+            x_offset = (max_width - top_border.width) // 2
+            new_image.paste(top_border, (x_offset, y_offset))
+            y_offset += top_border.height
+            x_offset = (max_width - left_border.width) // 2
+            new_image.paste(left_border, (x_offset, y_offset))
+            y_offset += left_border.height
+            x_offset = (max_width - right_border.width) // 2
+            new_image.paste(right_border, (x_offset, y_offset))
+            y_offset += right_border.height
+            x_offset = (max_width - bottom_border.width) // 2
+            new_image.paste(bottom_border, (x_offset, y_offset))
+            data['auto_eval'] = color_condition(new_image, inst['color'])
+        self.save()
+
+
 class IEdit(EvalUnit):
     inst_name = 'i_edit'
 
@@ -645,7 +696,7 @@ class IEditAdd(EvalUnit):
         for data, inst in zip(self.res_list, self.inst_list):
             origin_image = inst['ref_image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
-            width_margin, height_margin = origin_image.size[0] // 5, origin_image.size[1] // 5
+            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
             bbox = (max(inst['bbox'][0] - width_margin, 0),
                     max(inst['bbox'][1] - height_margin, 0),
                     min(inst['bbox'][2] + width_margin, origin_image.size[0]),
@@ -673,5 +724,4 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    a = IOCRChinese(model_name='Ideogram2', sample_size=4)
-    a.evaluate()
+    pass

@@ -6,6 +6,7 @@ import re
 import librosa
 import evaluate
 import json
+import colorsys
 import numpy as np
 import soundfile as sf
 import pandas as pd
@@ -220,6 +221,8 @@ def calculate_agreement(list1, list2):
 
 
 def color_condition(image: Image.Image, condition: str):
+    img_array = np.array(image)
+    avg_color = tuple(np.mean(img_array.reshape(-1, 3), axis=0).astype(int))
     color = {
         "green": (0, 128, 0),
         "blue": (0, 0, 255),
@@ -232,7 +235,15 @@ def color_condition(image: Image.Image, condition: str):
         "purple": (128, 0, 128),
         "cyan": (0, 255, 255),
     }[condition]
-    ref_image = Image.new("RGB", image.size, color)
+    avg_color_hsv = colorsys.rgb_to_hsv(*avg_color)
+    color_hsv = colorsys.rgb_to_hsv(*color)
+    if condition == "white" or condition == "black":
+        if abs(avg_color_hsv[2] - color_hsv[2]) > 38:
+            return 0.0
+    else:
+        if 0.15 < abs(avg_color_hsv[0] - color_hsv[0]) < 0.85:
+            return 0.0
+    ref_image = Image.new("RGB", image.size, avg_color)
     return calculate_ssim(image, ref_image)
 
 

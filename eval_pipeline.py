@@ -7,7 +7,7 @@ import argparse
 
 
 class EvalPipeline:
-    def __init__(self, model_name, cat='i', sample_size=1):
+    def __init__(self, model_name, cat='i', sample_size=1, single_evaluator=False):
         assert cat in ['i', 'a', 'it', 'at']
         self.model_name = model_name
         self.cat = cat
@@ -15,20 +15,23 @@ class EvalPipeline:
         if 'i' in cat:
             self.eval_list = ['i_object_include', 'i_object_exclude', 'i_object_count', 'i_object_cot',
                               'i_object_attribute', 'i_relation_two', 'i_relation_all', 'i_spacial_relative',
-                              'i_spacial_absolute', 'i_format_background', 'i_format_symmetric', 'i_ocr',
-                              'i_ocr_two', 'i_ocr_multi_lingual']
+                              'i_spacial_absolute', 'i_format_background', 'i_format_border', 'i_ocr', 'i_ocr_two']
+            if not single_evaluator:
+                self.eval_list += ['i_ocr_multi_lingual']
             if 't' in cat:
-                self.eval_list += ['i_structure', 'i_consistency_semantic', 'i_consistency_3d_object','i_consistency_3d_scene',
+                self.eval_list += ['i_consistency_semantic', 'i_consistency_3d_object','i_consistency_3d_scene',
                                    'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
                                    'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove','i_edit_object_modify',
-                                   'it_coherence_count', 'it_coherence_color', 'it_coherence_size', 'it_coherence_spacial_relative',
-                                   'it_coherence_spacial_absolute', 'it_coherence_ocr', 'it_coherence_code', 'it_coherence_math']
+                                   'it_coherence_count', 'it_coherence_color', 'it_coherence_size',
+                                   'it_coherence_spacial_absolute', 'it_coherence_ocr', 'i_structure']
+            if not single_evaluator:
+                self.eval_list += ['it_coherence_spacial_relative', 'it_coherence_math']
         if 'a' in cat:
             self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence',
                               'a_speech_attribute', 'a_speech_chinese', 'a_speech_imitate', 'a_speech_modify',
                               'a_music_instrument', 'a_music_tempo', 'a_music_intensity', 'a_music_exclude']
             if 't' in cat:
-                self.eval_list += ['a_structure', 'a_consistency_conversation', 'a_consistency_variant']
+                self.eval_list += ['a_consistency_conversation', 'a_consistency_variant', 'a_structure']
 
         if os.path.exists(f'./output/{model_name}/{cat}_eval.csv'):
             self.eval_df = pd.read_csv(f'./output/{model_name}/{cat}_eval.csv')
@@ -86,6 +89,16 @@ class EvalBenchmark:
             pipeline.evaluate()
             self.pipelines[model_name] = pipeline
 
+    @staticmethod
+    def get_weights(task_names):
+        weights = []
+        for task_name in task_names:
+            if 'i_ocr' in task_name:
+                weights.append(0.5)
+            else:
+                weights.append(1.0)
+        return weights
+
     def rank_models(self, method='absolute'):
         reshaped_dfs = []
         for model_name, pipeline in self.pipelines.items():
@@ -100,7 +113,8 @@ class EvalBenchmark:
         results = {'models': model_names}
         combined_df.to_csv(f'./output/{self.cat}_eval.csv', index=False)
         if method == 'absolute':
-            scores = combined_df[model_names].mean().tolist()
+            scores = np.array(combined_df[model_names])
+            scores = np.average(scores, weights=self.get_weights(combined_df['task']), axis=0)
             results['scores'] = scores
             results['rank'] = self.rank_with_ties(scores)
         elif method == 'relative':
@@ -139,9 +153,11 @@ class EvalBenchmark:
         if 'a' in self.cat:
             print('There is no baseline for audio generation evaluation.')
             return
-        if self.cat == 't':
-            golden_reference = {'Imagen3': 88, 'Recraft3': 26, 'LumaPhoton': 21, 'Flux1_1Pro': 21,
-                                'Ideogram2': 20, 'Dalle3': -22, 'StableDiffusion3_5': -56}
+        if self.cat == 'i':
+            # golden_reference = {'Imagen3': 1, 'Recraft3': 4, 'LumaPhoton': 2, 'Flux1_1Pro': 5,
+            #                     'Ideogram2': 2, 'Dalle3': 6, 'StableDiffusion3_5': 7}
+            golden_reference = {'Imagen3': 1093, 'Recraft3': 1025, 'LumaPhoton': 1024, 'Flux1_1Pro': 1014,
+                                'Ideogram2': 1002, 'Dalle3': 978, 'StableDiffusion3_5': 923}
             res = self.rank_models(method='absolute')
             print(calculate_pearson([golden_reference[m] for m in res['models'].to_list()], res['scores'].to_list()))
         else:
@@ -149,15 +165,15 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='Dalle3', help='Name of the model.')
-    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    # parser.add_argument('--model_name', type=str, default='Ideogram2', help='Name of the model.')
+    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    # args = parser.parse_args()
 
-    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    pipeline.evaluate()
+    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    # pipeline.evaluate()
 
-    # benchmark = EvalBenchmark(sample_size=4)
-    # benchmark.rank_models(method='absolute')
-    # benchmark.compute_correlation()
+    benchmark = EvalBenchmark(sample_size=4)
+    benchmark.rank_models(method='absolute')
+    benchmark.compute_correlation()
