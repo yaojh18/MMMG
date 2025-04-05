@@ -88,17 +88,19 @@ class VoiceLDM(Model):
         if os.path.exists('./models/VoiceLDM/input/'):
             shutil.rmtree('./models/VoiceLDM/input/')
             os.makedirs('./models/VoiceLDM/input/')
+        else:
+            os.makedirs('./models/VoiceLDM/input/')
             
         res_list = []
         for idx, query in enumerate(query_list):
-            desc_prompt = query['style']                    
+            cont_prompt = query['text']
             if query['reference'] != '':                
                 shutil.copy(query['reference'], f'./models/VoiceLDM/input/{idx}.wav')
                 audio_prompt = f'./models/VoiceLDM/input/{idx}.wav'
-                cont_prompt = None
+                desc_prompt = None
             else:
                 audio_prompt = None
-                cont_prompt = query['text']
+                desc_prompt = query['style']
                     
             audio = self.model(
                 desc_prompt=desc_prompt,
