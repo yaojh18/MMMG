@@ -69,16 +69,22 @@ class AudioAgent(Model):
                         "style": audio_prompt[2], "reference": ""
                     })
                 elif audio_prompt[3] is not None:
-                    audio_list.append({
-                        "type": audio_prompt[0], "text": audio_prompt[1],
-                        "style": "", "reference": query['audio_list'][int(audio_prompt[3])]
-                    })
+                    ref_idx = int(audio_prompt[3])
+                    if ref_idx < len(query['audio_list']):
+                        audio_list.append({
+                            "type": audio_prompt[0], "text": audio_prompt[1],
+                            "style": "", "reference": query['audio_list'][ref_idx],
+                            "reference_text": query['text_list'][ref_idx]
+                        })
+                    else:
+                        audio_list.append(FAILED_TOKEN)
+                        continue
                 elif audio_prompt[4] is not None:
                     ref_idx = int(audio_prompt[4][1:])
-                    if ref_idx < len(audio_list) and (os.path.exists(audio_list[ref_idx]["reference"]) or audio_list[ref_idx]["style"]):
+                    if ref_idx < len(audio_list) and not isinstance(audio_list[ref_idx]["reference"], int):
                         audio_list.append({
-                            "type": audio_prompt[0], "text": audio_list[ref_idx]['text'] + ' ' + audio_prompt[1],
-                            "style": "", "reference": ref_idx
+                            "type": audio_prompt[0], "text": audio_prompt[1],
+                            "style": "", "reference": ref_idx, "reference_text": audio_list[ref_idx]['text']
                         })
                     else:
                         audio_list.append(FAILED_TOKEN)

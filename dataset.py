@@ -1,19 +1,15 @@
 import os
-import json
 import random
 import shutil
 
-import librosa
-import soundfile as sf
-import matplotlib.pyplot as plt
-import pandas as pd
 from datasets import load_dataset
 from PIL import Image, ImageDraw
 
 from interface import LabelBBoxInterface
+from utils import *
 
 
-def curate_image_editing_instruction():
+def sample_from_emu_edit():
     raw_dataset = load_dataset('facebook/emu_edit_test_set')['test']
     for task in ('text', 'add', 'remove', 'local'):
         dataset = []
@@ -46,13 +42,13 @@ def curate_image_editing_instruction():
 
 
 def label_image_editing_instruction():
-    for task in ('local',):
+    for task in ('i_edit_add', 'i_edit_color'):
         dataset = []
-        with open(f'./data/emuedit/{task}.jsonl', 'r', encoding='utf-8') as file:
+        with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
         for data in dataset:
-            data['image'] = f'./data/emuedit/image/{task}_{data["image_list"][0]}.png'
+            data['image'] = f'./seed_instruction/image/{task}_{data["ref_image_list"][0]}.png'
         interface = LabelBBoxInterface(data_list=dataset)
         interface.start()
         output_list = []
@@ -62,55 +58,24 @@ def label_image_editing_instruction():
                 data['bbox'] = bbox
                 del data['image']
                 output_list.append(data)
-        with open(f'./data/emuedit/{task}.jsonl', 'w', encoding='utf-8') as file:
+        with open(f'./seed_instruction/{task}.jsonl', 'w', encoding='utf-8') as file:
             for data in output_list:
                 file.write(json.dumps(data) + '\n')
 
 
 def validate_image_editing_instruction():
-    for task in ('local',):
+    for task in ('i_edit_add', 'i_edit_color'):
         dataset = []
-        with open(f'./data/emuedit/{task}.jsonl', 'r', encoding='utf-8') as file:
+        with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
         for data in dataset:
-            image = Image.open(f'./data/emuedit/image/{task}_{data["image_list"][0]}.png')
+            image = Image.open(f'./seed_instruction/image/{task}_{data["ref_image_list"][0]}.png')
             draw = ImageDraw.Draw(image)
             draw.rectangle(data['bbox'], outline="red", width=3)
             plt.imshow(image)
             plt.axis('off')
             plt.show()
-
-
-def reindex_image_editing_instruction():
-    name_translator = {
-        'text': 'text',
-        'add': 'object_add',
-        'remove': 'object_remove',
-        'local': 'object_modify',
-    }
-    for task in ('remove', 'local',):
-        dataset = []
-        with open(f'./data/emuedit/{task}.jsonl', 'r', encoding='utf-8') as file:
-            for line in file:
-                dataset.append(json.loads(line.strip()))
-        for data in dataset:
-            data['image_list'] = [Image.open(f'./data/emuedit/image/{task}_{idx}.png') for idx in data['image_list']]
-        output_path = f'./seed_instruction/'
-        image_list = []
-        output_list = []
-        image_idx = 0
-        for data in dataset:
-            output = data.copy()
-            output['image_list'] = list(range(image_idx, image_idx + len(data['image_list'])))
-            image_idx += len(data['image_list'])
-            image_list += data['image_list']
-            output_list.append(output)
-        with open(output_path + f'i_edit_{name_translator[task]}.jsonl', 'w', encoding='utf-8') as file:
-            for data in output_list:
-                file.write(json.dumps(data) + '\n')
-        for idx, image in enumerate(image_list):
-            image.save(output_path + f'image/i_edit_{name_translator[task]}_{idx}.png')
 
 
 def sample_from_isg_bench():
@@ -157,5 +122,20 @@ def sample_from_openmic():
                         f'./datasets/openmic-2018/{instrument_name}/{idx}.mp3')
 
 
+def paraphrasing_dataset(file_name):
+    res_list = []
+    with open(f'./seed_instruction/{file_name}.jsonl', 'r', encoding='utf-8') as file:
+        for line in file:
+            res_list.append(json.loads(line.strip()))
+    instruction = lambda i: f"### Instruction:\n Polish the following instruction to improve clarity and readability while preserving 100% of the original semantic meaning. Do not add, delete, or modify any requirements or specifications from the original instruction. Make small change. \n ### Instruction:\n{i}\n### Output format:\n ONLY the instruction after paraphrasing."
+    queries = [form_openai_mm_query(instruction(res['instruction'])) for res in res_list]
+    responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.5)
+    for data, res in zip(res_list, responses):
+        data['instruction_para'] = res.strip()
+    with open(f'./seed_instruction/{file_name}.jsonl', 'w', encoding='utf-8') as file:
+        for res in res_list:
+            file.write(json.dumps(res) + '\n')
+
+
 if __name__ == '__main__':
-    pass
+    paraphrasing_dataset('a_speech_modify')

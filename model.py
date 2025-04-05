@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from abc import abstractmethod
 
@@ -39,17 +40,18 @@ class BlankModel(Model):
 ### Tool models
 
 class VoxInstruct(Model):
-    def generate(self, query_list, language='english'):
+    def generate(self, query_list):
         """
         This model does not require a formated output list, thus can only be used for intermediate results.
         """
         input_list = []
+        language = 'chinese' if re.search(r'[\u4e00-\u9fff]', query_list[0]['text']) is not None else 'english'
         for idx, query in enumerate(query_list):
             if query['reference'] != '':
                 shutil.copy(query['reference'], f'./models/VoxInstruct/input/{idx}.wav')
-                input_list.append(f"{idx}|{int(language != 'english')}|\"{query['text']}\"|./input/{idx}.wav\n")
+                input_list.append(f"{idx}|{int(language != 'english')}|\"{query['reference_text']} {query['text']}\"|./input/{idx}.wav\n")
             else:
-                input_list.append(f"{idx}|{int(language != 'english')}|{query['style']},\"{query['text']}\"|\n")
+                input_list.append(f"{idx}|{int(language != 'english')}|{query['style']}, \"{query['text']}\"|\n")
         with open('./models/VoxInstruct/input/instructions.txt', 'w', encoding='utf-8') as f:
             f.writelines(input_list)
         os.chdir("./models/VoxInstruct")

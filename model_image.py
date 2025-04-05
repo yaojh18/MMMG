@@ -1,5 +1,4 @@
 import requests
-import replicate
 import os
 
 from model import Model
@@ -98,7 +97,7 @@ class Imagen3(Model):
 
     def generate(self, query_list):
         query_list = [query['instruction'] for query in query_list]
-        image_list = batch(self.generate_image_from_google, query_list, num_worker=4)
+        image_list = batch(self.generate_image_from_google, query_list, model_name=self.model_name, num_worker=1)
         res_list = []
         for query, image in zip(query_list, image_list):
             res_list.append({
@@ -167,7 +166,9 @@ class ReplicateModel(Model):
     def __init__(self):
         os.environ["REPLICATE_API_TOKEN"] = REPLICATE_KEY
 
-    def generate_image(self, index, query):
+    @staticmethod
+    def generate_image(index, query, model_name, image_size):
+        import replicate
         retry_count = 4
         retry_interval = 2
         for _ in range(retry_count):
@@ -175,12 +176,12 @@ class ReplicateModel(Model):
                 input_params = {
                     "prompt": query.get("instruction", "")
                 }
-                if 'x' in self.image_size:
-                    input_params['size'] = self.image_size
+                if 'x' in image_size:
+                    input_params['size'] = image_size
                 else:
-                    input_params['"aspect_ratio"'] = self.image_size
+                    input_params['"aspect_ratio"'] = image_size
                 output = replicate.run(
-                    self.model_name,
+                    model_name,
                     input=input_params,
                 )
                 image_bytes = output.read()
@@ -194,10 +195,10 @@ class ReplicateModel(Model):
                 time.sleep(retry_interval * (2 ** retry_count))
 
         print('Failed to get response.')
-        return index, Image.new("RGB", [int(s) for s in self.image_size.split('x')], "white")
+        return index, Image.new("RGB", [int(s) for s in image_size.split('x')], "white")
 
     def generate(self, query_list):
-        images = batch(self.generate_image, query_list, num_worker=4)
+        images = batch(self.generate_image, query_list, image_size=self.image_size, model_name=self.model_name, num_worker=4)
         output_list = []
         for image, query in zip(images, query_list):
             output_list.append({
@@ -213,11 +214,11 @@ class LumaPhoton(ReplicateModel):
     model_name = "luma/photon"
 
 
-class Flux1_1Pro(Model):
+class Flux1_1Pro(ReplicateModel):
     model_name = "black-forest-labs/flux-1.1-pro"
     image_size = "512x512"
 
 
-class Ideogram2(Model):
+class Ideogram2(ReplicateModel):
     model_name = "ideogram-ai/ideogram-v2"
     image_size = "1:1"

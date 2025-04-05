@@ -1,5 +1,4 @@
 import itertools
-from playwright.sync_api import sync_playwright
 
 from eval import EvalUnit
 from prompt import *
@@ -20,27 +19,17 @@ class IConsistencySemantic(EvalUnit):
             else:
                 data['model_eval'] = []
             for image, target in zip(data['image_list'], inst['object']):
-                if 'compose' in self.inst_name:
-                    query_list.append(form_openai_mm_query(
-                        IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(target),
-                        images=[image]
-                    ))
-                else:
-                    query_list.append(form_openai_mm_query(
-                        IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(target),
-                        images=[image]
-                    ))
+                query_list.append(form_openai_mm_query(
+                    IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(target),
+                    images=[image]
+                ))
                 data['model_eval'].append(idx)
                 idx += 1
 
         responses = batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
         for data in self.res_list:
-            if 'compose' in self.inst_name:
-                data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0
-                                      for i in data['model_eval']]
-            else:
-                data['model_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0
-                                      for i in data['model_eval']]
+            data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0
+                                  for i in data['model_eval']]
         self.save()
 
     def human_evaluate(self):
@@ -563,7 +552,7 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
         if not opt_list or len(opt_list) != 2 or not (set(opt_list) < {'a', 'b', 'c', 'd'}):
             data['model_eval'] = FAILED_TOKEN
             return
-        queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_PROMPT(
+        queries += [form_openai_mm_query(IMAGE_TOKEN(0) + I_OBJECT_EXIST_COT_PROMPT(
             f"exactly one {obj}"), images=data['image_list']) for obj in inst['object']]
         data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
                                               [[a, ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
@@ -685,6 +674,7 @@ class ITCoherenceCode(ITCoherenceColor):
 
     @staticmethod
     def html_to_image(html_content):
+        from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 960, "height": 540})
