@@ -49,6 +49,7 @@ class Tango2(Model):
                     target_sr=SAMPLE_RATE
                 )]
             })
+            os.remove("audio.wav")
         return res_list
 
 
