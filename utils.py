@@ -7,12 +7,15 @@ import librosa
 import evaluate
 import json
 import colorsys
+import parselmouth
 import numpy as np
 import soundfile as sf
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from nltk.tokenize import word_tokenize
+from dreamsim import dreamsim
 from google import genai
 from google.genai import types
 from tqdm import tqdm
@@ -182,7 +185,6 @@ def calculate_dreamsim(img1, img2):
     global dreamsim_model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if dreamsim_model is None:
-        from dreamsim import dreamsim
         dreamsim_model, _ = dreamsim(pretrained=True, device=device, cache_dir="./libs/DreamSim")
     img1 = preprocess(img1).to(device)
     img2 = preprocess(img2).to(device)
@@ -364,8 +366,6 @@ def transcribe_speech(audio_list, text_list=None, language='english'):
 
 
 def calculate_pitch(audio, gender=None, inst=''):
-    import parselmouth
-
     def extract_pitch(audio, hop_size=256, f0_min=80, f0_max=600, num_bins=100):
         pitch_obj = parselmouth.Sound(audio, SAMPLE_RATE).to_pitch(
             time_step=hop_size / SAMPLE_RATE,
@@ -459,7 +459,6 @@ def text_instruction_following_verify(text_list, instruction_list):
     The return will be a list of {0, 1}s representing the instruction following result for each.
     TODO: more will come in the future, only speech-compatible ones are included.
     """
-    from nltk.tokenize import word_tokenize
     output_list = []
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     for text, inst in zip(text_list, instruction_list):

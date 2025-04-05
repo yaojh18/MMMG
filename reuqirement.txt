@@ -8,3 +8,6 @@ transformers
 gradio
 evaluate
 scipy
+dreamsim
+parselmouth
+nltk

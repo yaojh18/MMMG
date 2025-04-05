@@ -3,7 +3,4 @@ __pycache__
 output
 datasets
 models
-*.safetensors
-*.zip
-*.tar
-*.pth
+DreamSim
