@@ -37,7 +37,7 @@ class Tango2(Model):
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
                 'audio_list': [librosa.resample(
-                    self.model.generate(query['instruction']),#, seed=random.randint(0, 1000)).numpy(),
+                    self.model.generate(query['instruction']).numpy(),#, seed=random.randint(0, 1000)).numpy(),
                     orig_sr=16000,
                     target_sr=SAMPLE_RATE
                 )]
