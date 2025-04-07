@@ -37,13 +37,13 @@ class IObject(EvalUnit):
                 data['model_eval'] = [FAILED_TOKEN] * len(obj_list)
                 continue
             if self.inst_name == 'i_object_include' or self.inst_name == 'i_object_exclude':
-                queries.append(form_openai_mm_query(I_SCENE_PROMPT(obj_list[0]), images=data['image_list']))
-                queries += [form_openai_mm_query(self.instruction_func(obj), images=data['image_list']) for obj in obj_list[1:]]
+                queries.append(form_mm_query(I_SCENE_PROMPT(obj_list[0]), images=data['image_list']))
+                queries += [form_mm_query(self.instruction_func(obj), images=data['image_list']) for obj in obj_list[1:]]
             else:
-                queries += [form_openai_mm_query(self.instruction_func(obj), images=data['image_list']) for obj in obj_list]
+                queries += [form_mm_query(self.instruction_func(obj), images=data['image_list']) for obj in obj_list]
             data['model_eval'] = list(range(idx, idx + len(obj_list)))
             idx += len(obj_list)
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
         for data in self.res_list:
             data['model_eval'] = [parsed_responses[idx] if idx != FAILED_TOKEN else 0.0 for idx in data['model_eval']]
@@ -54,19 +54,19 @@ class IObject(EvalUnit):
                 data['model_eval'] = [float(data['model_eval'][0] == (inst['count'] - 2))]
             self.save()
 
-    def human_evaluate(self):
+    def human_evaluate(self, output_status=True):
         human_inst_list = []
         human_res_list = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             obj_list = [inst['object']] if isinstance(inst['object'], str) else inst['object']
             if len(data['image_list']) != 1:
-                data['human_eval'] = [FAILED_TOKEN] * len(obj_list)
+                data['human_eval'] = FAILED_TOKEN
                 continue
-            human_inst_list += [self.human_instruction_func(inst['object'])]
-            human_res_list += [data] * len(obj_list)
-            data['human_eval'] = list(range(idx, idx + len(obj_list)))
-            idx += len(obj_list)
+            human_inst_list.append(self.human_instruction_func(obj_list))
+            human_res_list.append(data)
+            data['human_eval'] = idx
+            idx += 1
         interface = MultiLabelInterface(
             label_list=self.label_list,
             eval_inst_list=human_inst_list,
@@ -74,14 +74,16 @@ class IObject(EvalUnit):
         )
         interface.start()
         for data in self.res_list:
-            data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) if idx != FAILED_TOKEN
-                                  else 0.0 for idx in data['human_eval']]
+            data['human_eval'] = self.human_judge_process_func(interface.eval_list[data['human_eval']]) \
+                if data['human_eval'] != FAILED_TOKEN else 0.0
         self.save()
 
         if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['human_eval'] = [float(data['human_eval'][0] == (inst['count'] - 2))]
+                data['human_eval'] = [float(data['human_eval'] == (inst['count'] - 2))]
             self.save()
+        if output_status:
+            print('Human evaluation finished!')
 
     def compute_accuracy(self, return_list=False):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
@@ -108,7 +110,7 @@ class IObjectInclude(IObject):
         if len(obj_list) == 1:
             return f"Is/Are there {obj_list[0]} in the given image?\n"
         else:
-            return f"Is the given image about {obj_list[0]} and are there {', '.join(obj_list[1:])} in the given image?\n"
+            return f"Is the given image about {obj_list[0]} and is/are there {', '.join(obj_list[1:])} in the given image?\n"
 
     @staticmethod
     def gpt_judge_process_func(res: str):
@@ -119,7 +121,7 @@ class IObjectInclude(IObject):
         return 1.0 if res == 0 else 0.0
 
     def compute_accuracy(self, return_list=False):
-        if self.inst_name != 'i_object_include':
+        if self.inst_name != 'i_object_include' and self.inst_name != 'i_object_exclude':
             return super().compute_accuracy(return_list)
         model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
         if not return_list:
@@ -127,9 +129,9 @@ class IObjectInclude(IObject):
         return model_eval_list
 
     def compute_correlation(self):
-        if self.inst_name != 'i_object_include':
+        if self.inst_name != 'i_object_include' and self.inst_name != 'i_object_exclude':
             return super().compute_correlation()
-        human_eval_list = [float(res['human_eval'][0] == 1.0) * np.mean(res['human_eval'][1:]) for res in self.res_list]
+        human_eval_list = [res['human_eval'] for res in self.res_list]
         model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
         return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
@@ -146,23 +148,11 @@ class IObjectExclude(IObjectInclude):
         return 1.0 if float('no' in res.strip().lower()[-20:]) else 0.0
 
     @staticmethod
-    def human_judge_process_func(res: str):
-        return 1.0 if res == 1 else 0.0
-
-    def compute_accuracy(self, return_list=False):
-        if self.inst_name != 'i_object_exclude':
-            return super().compute_accuracy(return_list)
-        model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
-        if not return_list:
-            return np.mean(model_eval_list)
-        return model_eval_list
-
-    def compute_correlation(self):
-        if self.inst_name != 'i_object_exclude':
-            return super().compute_correlation()
-        human_eval_list = [float(res['human_eval'][0] == 0.0) * np.mean(res['human_eval'][1:]) for res in self.res_list]
-        model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+    def human_instruction_func(obj_list):
+        if len(obj_list) == 1:
+            return f"Is/Are there {obj_list[0]} not in the given image?\n"
+        else:
+            return f"Is the given image about {obj_list[0]} and is/are there {', '.join(obj_list[1:])} NOT in the given image?\n"
 
 
 class IObjectCoT(IObjectInclude):
@@ -218,7 +208,7 @@ class ISpacial(EvalUnit):
     def human_judge_process_func(res: str):
         pass
 
-    def human_evaluate(self):
+    def human_evaluate(self, output_status=True):
         human_queries = []
         human_res_list = []
         idx = 0
@@ -241,6 +231,8 @@ class ISpacial(EvalUnit):
             data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) if idx != FAILED_TOKEN
                                   else 0.0 for idx in data['human_eval']]
         self.save()
+        if output_status:
+            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
@@ -262,11 +254,11 @@ class ISpacialAbsolute(ISpacial):
             if len(data['image_list']) != 1:
                 data['model_eval'] = [FAILED_TOKEN] * len(inst['constraint'])
                 continue
-            queries += [form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
+            queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
                                              images=data['image_list']) for obj, _ in inst['constraint']]
             data['model_eval'] = list(range(idx, idx + len(inst['constraint'])))
             idx += len(inst['constraint'])
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN
                                   else 0.0 for i in data['model_eval']]
@@ -277,11 +269,11 @@ class ISpacialAbsolute(ISpacial):
         for data, inst in zip(self.res_list, self.inst_list):
             for i in range(len(inst['constraint'])):
                 if data['model_eval'][i] == 1.0:
-                    queries.append(form_openai_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(inst['constraint'][i][0]),
+                    queries.append(form_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(inst['constraint'][i][0]),
                                                         images=data['image_list']))
                     data['model_eval'][i] = idx
                     idx += 1
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data, inst in zip(self.res_list, self.inst_list):
             for i in range(len(inst['constraint'])):
                 if isinstance(data['model_eval'][i], int):
@@ -312,12 +304,12 @@ class ISpacialRelative(ISpacial):
             if len(data['image_list']) != 1:
                 data['model_eval'] = [FAILED_TOKEN] * len(inst['constraint'])
                 continue
-            queries.append(form_openai_mm_query(
+            queries.append(form_mm_query(
                 I_OBJECT_EXIST_COT_PROMPT(f"exactly one {inst['constraint'][0][0]} and exactly one {inst['constraint'][0][1]}"),
                 images=data['image_list']))
             data['model_eval'] = [idx]
             idx += 1
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN
                                   else 0.0 for i in data['model_eval']]
@@ -328,16 +320,16 @@ class ISpacialRelative(ISpacial):
         for data, inst in zip(self.res_list, self.inst_list):
             if data['model_eval'][0] == 1.0:
                 if inst['constraint'][0][2] in ('left', 'right'):
-                    queries.append(form_openai_mm_query(
+                    queries.append(form_mm_query(
                         I_SPACIAL_RELATIVE_LR(inst['constraint'][0][0], inst['constraint'][0][1]),
                         images=data['image_list']))
                 else:
-                    queries.append(form_openai_mm_query(
+                    queries.append(form_mm_query(
                         I_SPACIAL_RELATIVE_UD(inst['constraint'][0][0], inst['constraint'][0][1]),
                         images=data['image_list']))
                 data['model_eval'] = [idx]
                 idx += 1
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data, inst in zip(self.res_list, self.inst_list):
             if isinstance(data['model_eval'][0], int):
                 opt = re.search('nswer: ([ABC])', responses[data['model_eval'][0]])
@@ -370,16 +362,16 @@ class IOCR(EvalUnit):
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            queries.append(form_openai_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
+            queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
             data['model_eval'] = idx
             idx += 1
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             data['model_eval'] = ' '.join(extract_list(responses[data['model_eval']])).lower().strip() \
                 if data['model_eval'] != FAILED_TOKEN else ''
         self.save()
 
-    def human_evaluate(self):
+    def human_evaluate(self, output_status=True):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -402,6 +394,8 @@ class IOCR(EvalUnit):
             data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip() \
                 if data['human_eval'] != FAILED_TOKEN else ''
         self.save()
+        if output_status:
+            print('Human evaluation finished!')
 
     def compute_accuracy(self, return_list=False):
         label_list = [[self.normalize_text(inst['text'])] for inst in self.inst_list]
@@ -449,10 +443,10 @@ class IOCRTwo(IOCR):
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            queries.append(form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(inst['object']), images=data['image_list']))
+            queries.append(form_mm_query(I_OBJECT_EXIST_COT_PROMPT(inst['object']), images=data['image_list']))
             data['model_eval'] = idx
             idx += 1
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN and 'yes' in responses[data['model_eval']].strip().lower()[-20:]:
                 data['model_eval'] = [0.0, 0.0]
@@ -464,10 +458,10 @@ class IOCRTwo(IOCR):
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             if FAILED_TOKEN not in data['model_eval']:
-                queries += [form_openai_mm_query(I_OCR_ENGLISH_PROMPT(obj), images=data['image_list']) for obj in inst['text'].keys()]
+                queries += [form_mm_query(I_OCR_ENGLISH_PROMPT(obj), images=data['image_list']) for obj in inst['text'].keys()]
                 data['model_eval'] = [idx, idx + 1]
                 idx += 2
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             if FAILED_TOKEN not in data['model_eval']:
                 for i in range(2):
@@ -476,7 +470,7 @@ class IOCRTwo(IOCR):
                 data['model_eval'] = ['', '']
         self.save()
 
-    def human_evaluate(self):
+    def human_evaluate(self, output_status=True):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -523,6 +517,8 @@ class IOCRTwo(IOCR):
             else:
                 data['human_eval'] = ['', '']
         self.save()
+        if output_status:
+            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
@@ -546,30 +542,30 @@ class IOCRChinese(IOCR):
 
     def evaluate(self):
         gpt_queries = []
-        gemini_queries = []
+        vlm_queries = []
         idx = 0
         for data in self.res_list:
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            gpt_queries.append(form_openai_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
-            gemini_queries.append(form_gemini_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
+            gpt_queries.append(form_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
+            vlm_queries.append(form_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
             data['model_eval'] = idx
             idx += 1
-        gpt_responses = batch(query_openai, gpt_queries, model='chatgpt-4o-latest', temperature=0.0)
-        gemini_responses = batch(query_gemini, gemini_queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0, num_worker=2)
+        gpt_responses = batch(query_openai, gpt_queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0)
+        vlm_responses = query_vlm(vlm_queries)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN:
                 gpt_res = ''.join(re.findall(r'[\u4e00-\u9fff]', gpt_responses[data['model_eval']]))
-                gemini_res = ''.join(re.findall(r'[\u4e00-\u9fff]', gemini_responses[data['model_eval']]))
-                data['model_eval'] = [gpt_res, gemini_res]
+                vlm_res = ''.join(re.findall(r'[\u4e00-\u9fff]', vlm_responses[data['model_eval']]))
+                data['model_eval'] = [gpt_res, vlm_res]
                 data['model_eval_score'] = ''.join(set(data['model_eval'][0]).intersection(set(data['model_eval'][1])))
             else:
                 data['model_eval'] = ['', '']
                 data['model_eval_score'] = ''
         self.save()
 
-    def human_evaluate(self):
+    def human_evaluate(self, output_status=True):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -591,6 +587,8 @@ class IOCRChinese(IOCR):
         for data in self.res_list:
             data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip() if data['human_eval'] != FAILED_TOKEN else ''
         self.save()
+        if output_status:
+            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         label_list = [[inst['text']] for inst in self.inst_list]
@@ -613,9 +611,11 @@ class IOCRMultiLingual(EvalUnit):
         self.chinese.evaluate()
         self.german.evaluate()
 
-    def human_evaluate(self):
-        self.chinese.human_evaluate()
-        self.german.human_evaluate()
+    def human_evaluate(self, output_status=True):
+        self.chinese.human_evaluate(output_status=False)
+        self.german.human_evaluate(output_status=False)
+        if output_status:
+            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         return (self.chinese.compute_accuracy() + self.german.compute_accuracy()) / 2.0

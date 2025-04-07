@@ -10,7 +10,7 @@ class IConsistencySemantic(EvalUnit):
     inst_name = 'i_consistency_semantic'
 
     def evaluate(self):
-        query_list = []
+        queries = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['image_list']) != len(inst['object']):
@@ -19,11 +19,11 @@ class IConsistencySemantic(EvalUnit):
             else:
                 data['model_eval'] = []
             for image, target in zip(data['image_list'], inst['object']):
-                query_list.append(form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(target), images=[image]))
+                queries.append(form_mm_query(I_OBJECT_EXIST_COT_PROMPT(target), images=[image]))
                 data['model_eval'].append(idx)
                 idx += 1
 
-        responses = batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0
                                   for i in data['model_eval']]
@@ -284,7 +284,7 @@ class ITCoherence(EvalUnit):
     label_list: tuple
     default_eval = 0.0
 
-    def evaluate(self, model='gpt'):
+    def evaluate(self):
         text_pattern = r'<image_start><image_\d+><image_end>'
         queries = []
         self.idx = 0
@@ -299,10 +299,7 @@ class ITCoherence(EvalUnit):
             #     continue
             # self.model_process_data(data, inst, texts[0], queries)
             self.model_process_data(data, inst, ''.join(texts), queries)
-        if model == 'gpt':
-            responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
-        else:
-            responses = batch(query_gemini, queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0, num_worker=2)
+        responses = query_vlm(queries)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN:
                 self.model_process_response(data, responses)
@@ -363,7 +360,7 @@ class ITCoherenceCount(ITCoherence):
             data['model_eval'] = FAILED_TOKEN
             return
         obj, cnt = res.group(1), int(res.group(2))
-        queries.append(form_openai_mm_query(I_OBJECT_COUNT_PROMPT(obj), images=data['image_list']))
+        queries.append(form_mm_query(I_OBJECT_COUNT_PROMPT(obj), images=data['image_list']))
         data['object'], data['count'], data['model_eval'] = obj, cnt, self.idx
         self.idx += 1
 
@@ -395,7 +392,7 @@ class ITCoherenceColor(ITCoherence):
         if not obj2col or (set(obj2col.keys()) != set(inst['object'])) or (set(obj2col.values()) != set(inst['color'])):
             data['model_eval'] = FAILED_TOKEN
             return
-        queries += [form_openai_mm_query(
+        queries += [form_mm_query(
             I_OBJECT_EXIST_COT_PROMPT(f'exactly one {obj} and the color of {obj} being mostly {col}'),
             images=data['image_list'],
         ) for obj, col in obj2col.items()]
@@ -430,7 +427,7 @@ class ITCoherenceSize(ITCoherenceColor):
             data['model_eval'] = FAILED_TOKEN
             return
         rel_map = {'size': 'larger', 'area': 'larger', 'volume': 'bigger', 'length': 'longer', 'height': 'higher'}
-        queries += [form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(
+        queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(
                 f"exactly one {obj_list[i]}, exactly one {obj_list[j]} and the "
                 f"{obj_list[j]} being obviously {rel_map[inst['relation']]} than the {obj_list[i]}"),
             images=data['image_list']) for i in range(3) for j in range(i + 1, 3)]
@@ -455,21 +452,21 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
     default_eval = [0.0, 0.0]
 
     def evaluate(self):
-        super().evaluate(model='gemini')
+        super().evaluate()
         self.idx = 0
         queries = []
         for data in self.res_list:
             if data['model_eval'][0] == 1.0:
-                queries.append(form_gemini_mm_query(I_SPACIAL_RELATIVE_LR(
+                queries.append(form_mm_query(I_SPACIAL_RELATIVE_LR(
                     data['object'][0][0], data['object'][0][1]), images=data['image_list']))
                 data['model_eval'][0] = self.idx
                 self.idx += 1
             if data['model_eval'][1] == 1.0:
-                queries.append(form_gemini_mm_query(I_SPACIAL_RELATIVE_UD(
+                queries.append(form_mm_query(I_SPACIAL_RELATIVE_UD(
                     data['object'][1][0], data['object'][1][1]), images=data['image_list']))
                 data['model_eval'][1] = self.idx
                 self.idx += 1
-        responses = batch(query_gemini, queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0, num_worker=2)
+        responses = query_vlm(queries)
         for data in self.res_list:
             if isinstance(data['model_eval'][0], int):
                 opt = re.search('nswer: ([ABC])', responses[data['model_eval'][0]])
@@ -492,7 +489,7 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
         if not opt_list or len(opt_list) != 2 or not (set(opt_list) < {'a', 'b', 'c'}):
             data['model_eval'] = FAILED_TOKEN
             return
-        queries += [form_gemini_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj1} and exactly one {obj2}"),
+        queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj1} and exactly one {obj2}"),
             images=data['image_list']) for obj1, obj2 in inst['object']]
         data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
                                               [a + [ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
@@ -526,11 +523,11 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
         for data in self.res_list:
             for i in range(2):
                 if data['model_eval'][i] == 1.0:
-                    queries.append(form_openai_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(data['object'][i][0]),
+                    queries.append(form_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(data['object'][i][0]),
                                                         images=data['image_list']))
                     data['model_eval'][i] = self.idx
                     self.idx += 1
-        responses = batch(query_openai, queries, model='chatgpt-4o-latest', temperature=0.0)
+        responses = query_vlm(queries)
         for data in self.res_list:
             for i in range(2):
                 if isinstance(data['model_eval'][i], int):
@@ -548,7 +545,7 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
         if not opt_list or len(opt_list) != 2 or not (set(opt_list) < {'a', 'b', 'c', 'd'}):
             data['model_eval'] = FAILED_TOKEN
             return
-        queries += [form_openai_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
+        queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
                                          images=data['image_list']) for obj in inst['object']]
         data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
                                               [[a, ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
@@ -576,7 +573,7 @@ class ITCoherenceOCR(ITCoherence, IOCR):
             data['model_eval'] = FAILED_TOKEN
             return
         text = res.group(1)
-        queries.append(form_openai_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
+        queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
         data['text'], data['model_eval'] = text, self.idx
         self.idx += 1
 
@@ -629,7 +626,7 @@ class ITCoherenceMath(ITCoherenceColor):
     inst_name = 'it_coherence_math'
     def evaluate(self):
         self.load_inst_mm()
-        super().evaluate(model='gemini')
+        super().evaluate()
 
     def model_process_data(self, data, inst, res, queries):
         text = re.search(r"<<(.*?)>>", res)
@@ -639,9 +636,9 @@ class ITCoherenceMath(ITCoherenceColor):
         else:
             data['model_eval'] = [self.idx, self.idx + 1]
             data['text'] = text.group(1)
-            queries.append(form_gemini_mm_query(LLM_AS_A_JUDGE_PROMPT.format(inst['pattern'], text.group(1))))
+            queries.append(form_mm_query(LLM_AS_A_JUDGE_PROMPT.format(inst['pattern'], text.group(1))))
             self.idx += 2
-        queries.append(form_gemini_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list']))
+        queries.append(form_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list']))
         data['pattern'] = inst['pattern']
 
     @staticmethod
@@ -689,10 +686,10 @@ class ITCoherenceCode(ITCoherenceColor):
             except Exception as e:
                 data['image_list'] = [data['image_list'][0].copy(), Image.new("RGB", (960, 540), "white")]
         self.save(save_all=True)
-        super().evaluate(model='gemini')
+        super().evaluate()
 
     def model_process_data(self, data, inst, res, queries):
-        queries += [form_gemini_mm_query(
+        queries += [form_mm_query(
             I_OBJECT_EXIST_COT_PROMPT(inst['object']),
             images=[img],
         ) for img in data['image_list']]

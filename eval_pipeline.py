@@ -8,30 +8,30 @@ import argparse
 
 class EvalPipeline:
     def __init__(self, model_name, cat='i', sample_size=1, single_evaluator=False):
-        assert cat in ['i', 'a', 'it', 'at']
+        assert cat in ['i', 'it', 'aso', 'asp', 'am']
         self.model_name = model_name
         self.cat = cat
         self.sample_size = sample_size
-        if 'i' in cat:
+        if cat == 'i':
             self.eval_list = ['i_object_include', 'i_object_exclude', 'i_object_count', 'i_object_cot',
                               'i_object_attribute', 'i_relation_two', 'i_relation_all', 'i_spacial_relative',
                               'i_spacial_absolute', 'i_format_background', 'i_format_border', 'i_ocr', 'i_ocr_two']
             if not single_evaluator:
                 self.eval_list += ['i_ocr_multi_lingual']
-            if 't' in cat:
-                self.eval_list += ['i_consistency_semantic', 'i_consistency_3d_object','i_consistency_3d_scene',
-                                   'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
-                                   'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove','i_edit_object_modify',
-                                   'it_coherence_count', 'it_coherence_color', 'it_coherence_size',
-                                   'it_coherence_spacial_absolute', 'it_coherence_ocr', 'i_structure']
-            if not single_evaluator:
-                self.eval_list += ['it_coherence_spacial_relative', 'it_coherence_math']
-        if 'a' in cat:
-            self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence',
-                              'a_speech_attribute', 'a_speech_chinese', 'a_speech_imitate', 'a_speech_modify',
-                              'a_music_instrument', 'a_music_tempo', 'a_music_intensity', 'a_music_exclude']
-            if 't' in cat:
-                self.eval_list += ['a_consistency_conversation', 'a_consistency_variant', 'a_structure']
+        if cat == 'it':
+            self.eval_list += ['i_consistency_semantic', 'i_consistency_3d_object','i_consistency_3d_scene',
+                               'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
+                               'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove','i_edit_object_modify',
+                               'it_coherence_count', 'it_coherence_color', 'it_coherence_size',
+                               'it_coherence_spacial_absolute', 'it_coherence_ocr', 'i_structure',
+                               'it_coherence_spacial_relative', 'it_coherence_math']
+        elif cat == 'aso':
+            self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence']
+        elif cat == 'asp':
+            self.eval_list = ['a_speech_attribute', 'a_speech_chinese', 'a_speech_imitate', 'a_speech_modify',
+                              'a_consistency_conversation', 'a_consistency_variant', 'a_structure']
+        elif cat == 'am':
+            self.eval_list = ['a_music_instrument', 'a_music_tempo', 'a_music_intensity', 'a_music_exclude']
 
         if os.path.exists(f'./output/{model_name}/{cat}_eval.csv'):
             self.eval_df = pd.read_csv(f'./output/{model_name}/{cat}_eval.csv')
@@ -56,34 +56,41 @@ class EvalPipeline:
                 task_name = row['task']
                 task = self.eval_map(task_name)
                 task.evaluate()
-                self.eval_df.at[index, 'accuracy'] = task.compute_accuracy()
+                self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
                 self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
 
     def human_evaluate(self):
+        interface = StdOutDisplayer()
+        interface.capture_stdout()
         for index, row in self.eval_df.iterrows():
             if pd.isna(row['human_accuracy']):
                 task_name = row['task']
                 task = self.eval_map(task_name)
-                pass
-                # TODO: a big interface is needed here...
+                task.human_evaluate()
+                self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+                self.eval_df.loc[index, ['human_accuracy', 'correlation']] = task.compute_correlation()
+                self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+        interface.release_stdout()
 
 
 class EvalBenchmark:
-    def __init__(self, model_name=None, cat='i', sample_size=1):
-        assert cat in ['i', 'a', 'it', 'at']
+    def __init__(self, model_name=None, cat='i', sample_size=4):
+        assert cat in ['i', 'it', 'aso', 'asp', 'am']
         self.model_name = model_name
         self.cat = cat
         self.sample_size = sample_size
         self.pipelines = {}
 
         if 'i' in cat:
-            base_model_list = []
-            if 't' not in cat:
-                base_model_list += ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3', 'StableDiffusion3_5']
-        if 'a' in cat:
-            base_model_list = []
-            if 't' not in cat:
-                base_model_list += []
+            base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3', 'StableDiffusion3_5']
+            if 't' in cat:
+                base_model_list += ['GPT4o', 'Gemini2', 'Anole', 'Emu3', 'Showo', 'Janus']
+        elif cat == 'aso':
+            base_model_list = ['Tango2', 'TangoFlux', 'StableAudio']
+        elif cat == 'asp':
+            base_model_list = ['QwenAudio', 'VoxInstructAgent', 'VoiceLDMAgent']
+        else:
+            base_model_list = ['MusicGen', 'YuE', 'StableMusic']
         for model_name in base_model_list:
             pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
             pipeline.evaluate()
@@ -150,9 +157,6 @@ class EvalBenchmark:
         return ranks
 
     def compute_correlation(self):
-        if 'a' in self.cat:
-            print('There is no baseline for audio generation evaluation.')
-            return
         if self.cat == 'i':
             # golden_reference = {'Imagen3': 1, 'Recraft3': 4, 'LumaPhoton': 2, 'Flux1_1Pro': 5,
             #                     'Ideogram2': 2, 'Dalle3': 6, 'StableDiffusion3_5': 7}
@@ -161,7 +165,14 @@ class EvalBenchmark:
             res = self.rank_models(method='absolute')
             print(calculate_pearson([golden_reference[m] for m in res['models'].to_list()], res['scores'].to_list()))
         else:
-            pass
+            print('There is no baseline for audio generation evaluation.')
+
+    def human_evaluate(self, index=0):
+        random_pipeline0 = EvalPipeline(model_name=f'RandomModel_{index}', cat=self.cat, sample_size=2)
+        random_pipeline0.human_evaluate()
+
+    def aggregate_human_evaluation(self):
+        pass
 
 
 if __name__ == '__main__':
@@ -175,5 +186,4 @@ if __name__ == '__main__':
     # pipeline.evaluate()
 
     benchmark = EvalBenchmark(sample_size=4)
-    benchmark.rank_models(method='absolute')
-    benchmark.compute_correlation()
+    benchmark.human_evaluate()

@@ -1,6 +1,6 @@
 import os
-import re
 import shutil
+import random
 from abc import abstractmethod
 
 import numpy as np
@@ -9,8 +9,6 @@ from utils import *
 
 
 class Model:
-    model_name: str
-
     @abstractmethod
     def generate(self, query_list):
         """
@@ -26,19 +24,6 @@ class Model:
         pass
 
 
-class BlankModel(Model):
-    def generate(self, query_list):
-        res_list = []
-        for query in enumerate(query_list):
-            res_list.append({
-                'query': query,
-                'response': AUDIO_TOKEN(0),
-                'image_list': [],
-                'audio_list': [np.random.randn(1000*SAMPLE_RATE)],
-            })
-        return res_list
-
-
 ### Tool models
 
 class BlankAudioModel(Model):
@@ -51,6 +36,45 @@ class BlankAudioModel(Model):
                 'image_list': [],
                 'audio_list': [np.zeros(SAMPLE_RATE)],
             })
+        return output_list
+
+
+class RandomModel(Model):
+    def __init__(self, sample_size=4, annotation_sample_size=2):
+        assert annotation_sample_size >= 2
+        self.sample_size = sample_size
+        self.annotation_sample_size = annotation_sample_size
+
+    @staticmethod
+    def inst_map(inst_name):
+        if (inst_name.startswith('i_consistency') or inst_name.startswith('i_edit')
+                or inst_name.startswith('i_structure') or inst_name.startswith('it')):
+            return ['GPT4o', 'Gemini2', 'Anole', 'Emu3', 'Showo', 'Janus']
+        if inst_name.startswith('i'):
+            return ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3']
+        if inst_name.startswith('a_sound'):
+            return ['Tango2', 'TangoFlux', 'StableAudio']
+        if inst_name.startswith('a_music'):
+            return ['MusicGen', 'YuE', 'StableMusic']
+        if inst_name.startswith('a_speech'):
+            return ['QwenAudio', 'VoxInstructAgent', 'VoiceLDMAgent']
+        raise NotImplementedError(inst_name)
+
+    def generate(self, inst_name):
+        from eval import EvalUnit
+        model_name_list = self.inst_map(inst_name)
+        for model_name in model_name_list:
+            if not os.path.exists(f'./output/{model_name}/{inst_name}.jsonl'):
+                raise FileNotFoundError(f'./output/{model_name}/{inst_name}.jsonl')
+        model_list = [EvalUnit(model_name=model_name, inst_name=inst_name, sample_size=self.sample_size)
+                      for model_name in model_name_list]
+        output_list = []
+        random.seed(0)
+        for i in range(len(model_list[0].res_list) // self.sample_size):
+            model_idxs = random.sample(range(len(model_list)), self.annotation_sample_size)
+            for idx in model_idxs:
+                gen_idx = random.randint(0, self.sample_size - 1)
+                output_list.append(model_list[idx].res_list[i * self.sample_size + gen_idx])
         return output_list
 
 

@@ -9,10 +9,12 @@ from interface import *
 class EvalUnit:
     inst_name: str
 
-    def __init__(self, model_name: str, sample_size=4):
+    def __init__(self, model_name: str, inst_name=None, sample_size=4):
         self.inst_list = []
         self.model_name = model_name
         self.sample_size = sample_size
+        if inst_name is not None:
+            self.inst_name = inst_name
         with open(f'./seed_instruction/{self.inst_name}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 self.inst_list.append(json.loads(line.strip()))
@@ -22,19 +24,22 @@ class EvalUnit:
             self.load()
             if len(self.inst_list) == len(self.res_list):
                 return
-
-        model = eval(f'{model_name}()')
-        query_list = []
-        for inst in self.inst_list:
-            query = {'instruction': inst['instruction']}
-            if 'image_list' in inst:
-                query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
-            if 'audio_list' in inst:
-                query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
-            if 'text_list' in inst:
-                query['text_list'] = inst['text_list']
-            query_list.append(query)
-        self.res_list = model.generate(query_list)
+        if model_name.startswith('RandomModel_'):
+            model = eval(f'{model_name.split("_")[0]}(annotation_sample_size={self.sample_size})')
+            self.res_list = model.generate(self.inst_name)
+        else:
+            model = eval(f'{model_name}()')
+            query_list = []
+            for inst in self.inst_list:
+                query = {'instruction': inst['instruction']}
+                if 'image_list' in inst:
+                    query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
+                if 'audio_list' in inst:
+                    query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
+                if 'text_list' in inst:
+                    query['text_list'] = inst['text_list']
+                query_list.append(query)
+            self.res_list = model.generate(query_list)
         self.save(save_all=True)
         self.load()
 
@@ -97,14 +102,12 @@ class EvalUnit:
     def pad_inst_list(self):
         self.inst_list = [inst for inst in self.inst_list for _ in range(self.sample_size)]
 
-    @abstractmethod
     def evaluate(self):
         pass
 
-    def human_evaluate(self):
+    def human_evaluate(self, output_status=True):
         pass
 
-    @abstractmethod
     def compute_accuracy(self, return_list=False):
         pass
 

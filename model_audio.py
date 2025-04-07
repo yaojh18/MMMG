@@ -1,4 +1,6 @@
 import random
+import os
+import shutil
 
 from model import Model
 from utils import *
@@ -106,9 +108,6 @@ class MusicGen(Model):
 
 class YuE(Model):
     def __init__(self):
-
-        import os
-        import shutil
         os.chdir("./models/YuE/inference")
         with open("lyrics.txt", "w") as f:
             f.write("[verse]\n\n[chorus]\n\n[outro]")

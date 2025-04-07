@@ -150,6 +150,14 @@ class AudioAgent(Model):
         return output_list
 
 
+class VoxInstructAgent(AudioAgent):
+    speech_model_name = 'VoxInstruct'
+
+
+class VoiceLDMAgent(AudioAgent):
+    speech_model_name = 'VoiceLDM'
+
+
 class ImageAgent(Model):
     def __init__(self, mllm='gpt-4o-2024-11-20', diffusion='dalle3'):
         self.mllm = OpenAIModel(mllm, system_prompt=I_AGENT_PROMPT)

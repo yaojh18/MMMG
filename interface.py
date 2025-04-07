@@ -1,6 +1,10 @@
 import threading
 import random
+import time
+
 import gradio as gr
+import io
+import sys
 from abc import abstractmethod
 
 from utils import *
@@ -314,3 +318,55 @@ class CalibratedLabelInterface(Interface):
     def submit(self):
         self.is_finished.set()
         return gr.update(visible=True)
+
+
+class StdOutDisplayer:
+    def __init__(self):
+        self.stdout_capture = None
+        self.original_stdout = sys.stdout
+
+    def capture_stdout(self):
+        self.interface = self.create_interface()
+        thread = threading.Thread(target=self.interface.launch, kwargs={'share': True})
+        thread.start()
+        time.sleep(1.0)
+        self.stdout_capture = io.StringIO()
+        sys.stdout = self.stdout_capture
+
+    def get_stdout(self):
+        if self.stdout_capture is None:
+            return None
+        return self.stdout_capture.getvalue()
+
+    def create_interface(self):
+        with gr.Blocks() as app:
+            output_text = gr.Textbox(
+                label="Annotation task URLs (note there might be more than one URL for one task.)",
+                interactive=False
+            )
+            def update_output():
+                while True:
+                    output = self.get_stdout()
+                    if output:
+                        marker = 'Human evaluation finished!\n'
+                        if marker in output:
+                            self.stdout_capture.seek(0)
+                            self.stdout_capture.truncate(0)
+                            start_pos = output.find(marker) + len(marker)
+                            self.stdout_capture.write(output[start_pos:])
+                            return output[start_pos:]
+                        return output
+                    time.sleep(1.0)
+            app.load(
+                fn=update_output,
+                inputs=[],
+                outputs=[output_text],
+                every=1.0
+            )
+        return app
+
+    def release_stdout(self):
+        if self.stdout_capture:
+            sys.stdout = self.original_stdout
+            self.stdout_capture = None
+            self.interface.close()
