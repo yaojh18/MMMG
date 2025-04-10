@@ -724,4 +724,5 @@ class ITCoherenceCode(ITCoherenceColor):
 
 
 if __name__ == '__main__':
-    pass
+    a = ITCoherenceMath(model_name='Anole', sample_size=1)
+    # a.evaluate()
