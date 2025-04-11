@@ -2,12 +2,12 @@ openai
 librosa
 soundfile
 google-genai
-skimage
-sklearn
+scikit-image
+scikit-learn
 transformers
 gradio
 evaluate
 scipy
 dreamsim
-parselmouth
+praat-parselmouth
 nltk

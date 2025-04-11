@@ -7,6 +7,7 @@ from prompt import *
 
 class IObject(EvalUnit):
     label_list: tuple
+    vlm: str
 
     @staticmethod
     @abstractmethod
@@ -37,13 +38,15 @@ class IObject(EvalUnit):
                 data['model_eval'] = [FAILED_TOKEN] * len(obj_list)
                 continue
             if self.inst_name == 'i_object_include' or self.inst_name == 'i_object_exclude':
-                queries.append(form_mm_query(I_SCENE_PROMPT(obj_list[0]), images=data['image_list']))
-                queries += [form_mm_query(self.instruction_func(obj), images=data['image_list']) for obj in obj_list[1:]]
+                queries.append(form_mm_query(I_SCENE_PROMPT(obj_list[0]), images=data['image_list'], model=self.vlm))
+                queries += [form_mm_query(self.instruction_func(obj), images=data['image_list'], model=self.vlm)
+                            for obj in obj_list[1:]]
             else:
-                queries += [form_mm_query(self.instruction_func(obj), images=data['image_list']) for obj in obj_list]
+                queries += [form_mm_query(self.instruction_func(obj), images=data['image_list'], model=self.vlm)
+                            for obj in obj_list]
             data['model_eval'] = list(range(idx, idx + len(obj_list)))
             idx += len(obj_list)
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         parsed_responses = [self.gpt_judge_process_func(res) for res in responses]
         for data in self.res_list:
             data['model_eval'] = [parsed_responses[idx] if idx != FAILED_TOKEN else 0.0 for idx in data['model_eval']]
@@ -99,6 +102,7 @@ class IObject(EvalUnit):
 
 class IObjectInclude(IObject):
     inst_name = 'i_object_include'
+    vlm = 'openai'
     label_list = ('Yes', 'No')
 
     @staticmethod
@@ -121,7 +125,7 @@ class IObjectInclude(IObject):
         return 1.0 if res == 0 else 0.0
 
     def compute_accuracy(self, return_list=False):
-        if self.inst_name != 'i_object_include' and self.inst_name != 'i_object_exclude':
+        if self.inst_name != 'i_object_include':
             return super().compute_accuracy(return_list)
         model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
         if not return_list:
@@ -129,7 +133,7 @@ class IObjectInclude(IObject):
         return model_eval_list
 
     def compute_correlation(self):
-        if self.inst_name != 'i_object_include' and self.inst_name != 'i_object_exclude':
+        if self.inst_name != 'i_object_include':
             return super().compute_correlation()
         human_eval_list = [res['human_eval'] for res in self.res_list]
         model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
@@ -150,9 +154,24 @@ class IObjectExclude(IObjectInclude):
     @staticmethod
     def human_instruction_func(obj_list):
         if len(obj_list) == 1:
-            return f"Is/Are there {obj_list[0]} not in the given image?\n"
+            return f"Is/Are there {obj_list[0]} NOT in the given image?\n"
         else:
             return f"Is the given image about {obj_list[0]} and is/are there {', '.join(obj_list[1:])} NOT in the given image?\n"
+
+    def compute_accuracy(self, return_list=False):
+        if self.inst_name != 'i_object_exclude':
+            return super().compute_accuracy(return_list)
+        model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
+        if not return_list:
+            return np.mean(model_eval_list)
+        return model_eval_list
+
+    def compute_correlation(self):
+        if self.inst_name != 'i_object_exclude':
+            return super().compute_correlation()
+        human_eval_list = [res['human_eval'] for res in self.res_list]
+        model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class IObjectCoT(IObjectInclude):
@@ -170,6 +189,7 @@ class IObjectCoT(IObjectInclude):
 
 class IObjectCount(IObject):
     inst_name = 'i_object_count'
+    vlm = 'openai'
     label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
 
     @staticmethod
@@ -246,6 +266,7 @@ class ISpacial(EvalUnit):
 
 class ISpacialAbsolute(ISpacial):
     inst_name = 'i_spacial_absolute'
+    vlm = 'gemini'
 
     def evaluate(self):
         queries = []
@@ -255,10 +276,10 @@ class ISpacialAbsolute(ISpacial):
                 data['model_eval'] = [FAILED_TOKEN] * len(inst['constraint'])
                 continue
             queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
-                                             images=data['image_list']) for obj, _ in inst['constraint']]
+                                      model=self.vlm, images=data['image_list']) for obj, _ in inst['constraint']]
             data['model_eval'] = list(range(idx, idx + len(inst['constraint'])))
             idx += len(inst['constraint'])
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN
                                   else 0.0 for i in data['model_eval']]
@@ -270,10 +291,10 @@ class ISpacialAbsolute(ISpacial):
             for i in range(len(inst['constraint'])):
                 if data['model_eval'][i] == 1.0:
                     queries.append(form_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(inst['constraint'][i][0]),
-                                                        images=data['image_list']))
+                                                 images=data['image_list'], model=self.vlm))
                     data['model_eval'][i] = idx
                     idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data, inst in zip(self.res_list, self.inst_list):
             for i in range(len(inst['constraint'])):
                 if isinstance(data['model_eval'][i], int):
@@ -296,6 +317,7 @@ class ISpacialAbsolute(ISpacial):
 
 class ISpacialRelative(ISpacial):
     inst_name = 'i_spacial_relative'
+    vlm = 'openai'
 
     def evaluate(self):
         queries = []
@@ -306,10 +328,10 @@ class ISpacialRelative(ISpacial):
                 continue
             queries.append(form_mm_query(
                 I_OBJECT_EXIST_COT_PROMPT(f"exactly one {inst['constraint'][0][0]} and exactly one {inst['constraint'][0][1]}"),
-                images=data['image_list']))
+                images=data['image_list'], model=self.vlm))
             data['model_eval'] = [idx]
             idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN
                                   else 0.0 for i in data['model_eval']]
@@ -322,14 +344,14 @@ class ISpacialRelative(ISpacial):
                 if inst['constraint'][0][2] in ('left', 'right'):
                     queries.append(form_mm_query(
                         I_SPACIAL_RELATIVE_LR(inst['constraint'][0][0], inst['constraint'][0][1]),
-                        images=data['image_list']))
+                        images=data['image_list'], model=self.vlm))
                 else:
                     queries.append(form_mm_query(
                         I_SPACIAL_RELATIVE_UD(inst['constraint'][0][0], inst['constraint'][0][1]),
-                        images=data['image_list']))
+                        images=data['image_list'], model=self.vlm))
                 data['model_eval'] = [idx]
                 idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data, inst in zip(self.res_list, self.inst_list):
             if isinstance(data['model_eval'][0], int):
                 opt = re.search('nswer: ([ABC])', responses[data['model_eval'][0]])
@@ -353,6 +375,7 @@ class ISpacialRelative(ISpacial):
 
 class IOCR(EvalUnit):
     inst_name = 'i_ocr'
+    vlm = 'openai'
     language = 'english'
 
     def evaluate(self):
@@ -362,10 +385,10 @@ class IOCR(EvalUnit):
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
+            queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list'], model=self.vlm))
             data['model_eval'] = idx
             idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             data['model_eval'] = ' '.join(extract_list(responses[data['model_eval']])).lower().strip() \
                 if data['model_eval'] != FAILED_TOKEN else ''
@@ -411,10 +434,10 @@ class IOCR(EvalUnit):
     @staticmethod
     def normalize_text(text):
         normalized_text = text.lower().strip()
-        normalized_text = normalized_text.translate(str.maketrans('', '', string.punctuation))
         normalized_text = unicodedata.normalize('NFD', normalized_text)
         normalized_text = ''.join(char for char in normalized_text if unicodedata.category(char) != 'Mn')
-        return normalized_text if normalized_text != '' else FAILED_TOKEN
+        normalized_text = normalized_text.translate(str.maketrans('', '', string.punctuation))
+        return normalized_text or FAILED_TOKEN
 
     def _compute_accuracy(self, label_list, model_eval_list, return_list=False):
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
@@ -428,9 +451,9 @@ class IOCR(EvalUnit):
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         human_wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
                     for human_eval, label in zip(human_eval_list, label_list)]
-        model_wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
-                    for model_eval, label in zip(model_eval_list, label_list)]
-        return np.mean(human_wer_list), calculate_pearson(model_wer_list, human_wer_list)
+        correlated_wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=human_eval), 1.0)
+                    for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
+        return np.mean(human_wer_list), np.mean(correlated_wer_list)
 
 
 class IOCRTwo(IOCR):
@@ -443,10 +466,10 @@ class IOCRTwo(IOCR):
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            queries.append(form_mm_query(I_OBJECT_EXIST_COT_PROMPT(inst['object']), images=data['image_list']))
+            queries.append(form_mm_query(I_OBJECT_EXIST_COT_PROMPT(inst['object']), images=data['image_list'], model=self.vlm))
             data['model_eval'] = idx
             idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN and 'yes' in responses[data['model_eval']].strip().lower()[-20:]:
                 data['model_eval'] = [0.0, 0.0]
@@ -458,10 +481,11 @@ class IOCRTwo(IOCR):
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             if FAILED_TOKEN not in data['model_eval']:
-                queries += [form_mm_query(I_OCR_ENGLISH_PROMPT(obj), images=data['image_list']) for obj in inst['text'].keys()]
+                queries += [form_mm_query(I_OCR_ENGLISH_PROMPT(obj), images=data['image_list'], model=self.vlm)
+                            for obj in inst['text'].keys()]
                 data['model_eval'] = [idx, idx + 1]
                 idx += 2
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             if FAILED_TOKEN not in data['model_eval']:
                 for i in range(2):
@@ -548,12 +572,18 @@ class IOCRChinese(IOCR):
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            gpt_queries.append(form_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
-            vlm_queries.append(form_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
+            if self.vlm != 'openai':
+                gpt_queries.append(form_openai_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
+            else:
+                gpt_queries.append(form_gemini_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list']))
+            vlm_queries.append(form_mm_query(I_OCR_CHINESE_PROMPT, images=data['image_list'], model=self.vlm))
             data['model_eval'] = idx
             idx += 1
-        gpt_responses = batch(query_openai, gpt_queries, model='gemini-2.5-pro-exp-03-25', temperature=0.0)
-        vlm_responses = query_vlm(vlm_queries)
+        if self.vlm != 'openai':
+            gpt_responses = batch(query_openai, gpt_queries, model='chatgpt-4o-latest', temperature=0.0)
+        else:
+            gpt_responses = batch(query_gemini, gpt_queries, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
+        vlm_responses = query_vlm(vlm_queries, model=self.vlm)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN:
                 gpt_res = ''.join(re.findall(r'[\u4e00-\u9fff]', gpt_responses[data['model_eval']]))
@@ -591,14 +621,14 @@ class IOCRChinese(IOCR):
             print('Human evaluation finished!')
 
     def compute_accuracy(self):
-        label_list = [[inst['text']] for inst in self.inst_list]
-        model_eval_list = [[res['model_eval_score']] for res in self.res_list]
+        label_list = [[inst['text'] or FAILED_TOKEN] for inst in self.inst_list]
+        model_eval_list = [[res['model_eval_score'] or FAILED_TOKEN] for res in self.res_list]
         return self._compute_accuracy(label_list, model_eval_list)
 
     def compute_correlation(self):
-        label_list = [[inst['text']] for inst in self.inst_list]
-        model_eval_list = [[res['model_eval_score']] for res in self.res_list]
-        human_eval_list = [[res['human_eval']] for res in self.res_list]
+        label_list = [[inst['text'] or FAILED_TOKEN] for inst in self.inst_list]
+        model_eval_list = [[res['model_eval_score'] or FAILED_TOKEN] for res in self.res_list]
+        human_eval_list = [[res['human_eval'] or FAILED_TOKEN] for res in self.res_list]
         return self._compute_correlation(label_list, model_eval_list, human_eval_list)
 
 
@@ -621,7 +651,9 @@ class IOCRMultiLingual(EvalUnit):
         return (self.chinese.compute_accuracy() + self.german.compute_accuracy()) / 2.0
 
     def compute_correlation(self):
-        return (self.chinese.compute_correlation() + self.german.compute_correlation()) / 2.0
+        chines_cor = self.chinese.compute_correlation()
+        german_cor = self.german.compute_correlation()
+        return (chines_cor[0] + german_cor[0]) / 2.0, (chines_cor[1] + german_cor[1]) / 2.0
 
 
 class IFormatBackground(EvalUnit):

@@ -329,7 +329,7 @@ class StdOutDisplayer:
         self.interface = self.create_interface()
         thread = threading.Thread(target=self.interface.launch, kwargs={'share': True})
         thread.start()
-        time.sleep(1.0)
+        time.sleep(10.0)
         self.stdout_capture = io.StringIO()
         sys.stdout = self.stdout_capture
 

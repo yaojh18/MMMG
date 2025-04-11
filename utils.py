@@ -27,7 +27,6 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
 from sklearn.metrics import cohen_kappa_score
 from transformers import  AutoProcessor, ClapModel, AutoModelForSpeechSeq2Seq, Wav2Vec2FeatureExtractor, WavLMForXVector
-from trl.commands.scripts.ppo_multi_adapter import generation_kwargs
 
 OPENAI_KEY = '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'
 GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
@@ -38,7 +37,7 @@ IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
 AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'
 SAMPLE_RATE = 22050
-VISION_MODEL = 'gemini'
+VISION_MODEL = 'openai'
 
 idx2letter = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
@@ -80,12 +79,13 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
     return buffer.getvalue()
 
 
-def form_mm_query(text, images=[], audios=[]):
-    if VISION_MODEL == 'gemini':
+def form_mm_query(text, images=[], audios=[], model=''):
+    model = model or VISION_MODEL
+    if model == 'gemini':
         return form_gemini_mm_query(text, images, audios)
-    elif VISION_MODEL == 'openai':
+    elif model == 'openai':
         return form_openai_mm_query(text, images, audios)
-    elif VISION_MODEL == 'qwen':
+    elif model == 'qwen':
         return form_qwen_mm_query(text, images, audios)
     else:
         raise NotImplementedError('Vision model not implemented.')
@@ -138,12 +138,13 @@ def form_qwen_mm_query(text, images=[], audios=[]):
     }]
 
 
-def query_vlm(query_list):
-    if VISION_MODEL == 'gemini':
+def query_vlm(query_list, model=''):
+    model = model or VISION_MODEL
+    if model == 'gemini':
         return batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
-    elif VISION_MODEL == 'openai':
+    elif model == 'openai':
         return batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
-    elif VISION_MODEL == 'qwen':
+    elif model == 'qwen':
         return batch_query_qwen(query_list, temperature=0.0)
     else:
         raise NotImplementedError('Vision model not implemented.')
@@ -177,7 +178,7 @@ def query_openai(index, prompt, model, temperature):
 def query_gemini(index, query, model, temperature):
     client = genai.Client(api_key=GEMINI_KEY)
     retry_count = 10
-    retry_interval = 1
+    retry_interval = 10
 
     for _ in range(retry_count):
         try:
@@ -286,8 +287,17 @@ def calculate_pearson(list1, list2):
 
 
 def calculate_agreement(list1, list2):
-    return (np.array(list1) == np.array(list2)).sum() / len(list1)
-
+    # print(np.arange(len(list1))[np.array(list1) != np.array(list2)])
+    # return (np.array(list1) == np.array(list2)).sum() / len(list1)
+    list1 = np.array(list1)
+    list2 = np.array(list2)
+    if all(list1 == list2):
+        return 1.0
+    if np.std(list1) == 0:
+        list1 += np.random.normal(0, 1e-8, list1.shape)
+    if np.std(list2) == 0:
+        list2 += np.random.normal(0, 1e-8, list2.shape)
+    return np.corrcoef(list1, list2)[0, 1]
 
 def color_condition(image: Image.Image, condition: str):
     img_array = np.array(image)

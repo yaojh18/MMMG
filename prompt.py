@@ -1,10 +1,10 @@
-I_OBJECT_COUNT_PROMPT = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 3\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\nRespond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information."
+I_OBJECT_COUNT_PROMPT = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 3 or the image is blank\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\nRespond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information."
 
 I_OBJECT_EXIST_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Answer only yes or no.\n"
 
-I_SCENE_PROMPT = lambda scene: f"Is the given image about {scene}? Answer only yes or no.\n"
+I_SCENE_PROMPT = lambda scene: f"Is the given image generally about {scene}? Answer only yes or no.\n"
 
-I_OBJECT_EXIST_COT_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Explain step by step and end your answer with \"Yes\" or \"No\".\n"
+I_OBJECT_EXIST_COT_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Explain step by step and end your answer with \"Yes\" or \"No\". Answer \"No\" if the image is blank.\n"
 
 I_SPACIAL_ABSOLUTE_PROMPT = lambda obj: f"The {obj} is located in which section of the image? Choose from the options:\nA. bottom left B. bottom right C. up left D. up right E. none of the above (positioned in a more central way)\nExplain step by step and end your answer with \"Answer: [only an optional letter].\"\n"
 
