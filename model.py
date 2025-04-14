@@ -154,4 +154,4 @@ class GeminiModel(Model):
             images=[Image.open(image) for image in query['image_list']] if 'image_list' in query else [],
             audios=[librosa.load(audio)[0] for audio in query['audio_list']] if 'audio_list' in query else [],
         ) for query in query_list]
-        return batch(query_gemini, mllm_query_list, model=self.model_name, temperature=0.2)
+        return batch(query_gemini, mllm_query_list, model=self.model_name, temperature=0.0)
