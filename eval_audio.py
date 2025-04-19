@@ -1,6 +1,8 @@
+import librosa
 from scipy.signal import find_peaks
 from scipy.stats import linregress
 from libs.SpeechGenderCls import get_gender
+from matplotlib import pyplot as plt
 
 from eval import *
 
@@ -22,9 +24,10 @@ class ASound(EvalUnit):
         # self.save()
 
         # # Gemini-2.0
-        # query_list = [form_gemini_mm_query(f"Is the given audio the sound of {l}? Answer only yes or no.", audios=[a])
+        # query_list = [form_gemini_mm_query(f"Does the given audio obviously contain the sound of {l}? Explain step "
+        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[a])
         #               for a, l in zip(audio_list, label_list)]
-        # responses = batch(query_gemini, query_list, model='gemini-2.0-flash-exp', temperature=0.0, num_worker=1)
+        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
         # for idx, data in enumerate(self.res_list):
         #     data['model_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         # self.save()
@@ -36,7 +39,7 @@ class ASound(EvalUnit):
             file_list = ref_audio_map[ref_audio_map['category'] == label]['filename'].tolist()
             ref_audio_list = []
             for file_dir in file_list:
-                ref_audio, sr = librosa.load('./dataset/ESC-50/audio/' + file_dir)
+                ref_audio, sr = librosa.load('./datasets/ESC-50/audio/' + file_dir)
                 if sr != SAMPLE_RATE:
                     ref_audio = librosa.resample(ref_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
                 ref_audio_list.append(ref_audio)
@@ -47,6 +50,10 @@ class ASound(EvalUnit):
 
     def human_evaluate(self):
         audio_list, label_list, human_eval_res_list, idx_list = self._evaluate()
+        if len(audio_list) == 0:
+            for data in self.res_list:
+                data['human_eval'] = [0.0]
+            return
         interface = MultiLabelInterface(
             label_list=['Yes', 'No'],
             eval_inst_list=[f"Is the given audio about {label}?" for label in label_list],
@@ -58,12 +65,12 @@ class ASound(EvalUnit):
             data['human_eval'] = [1.0 - float(interface.eval_list[i]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         self.save()
 
-    def compute_accuracy(self, threshold=0.6):
+    def compute_accuracy(self, threshold=0.68):
         model_eval_list = [res['model_eval'] for res in self.res_list]
         model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
         return np.mean(model_eval_list)
 
-    def compute_correlation(self, threshold=0.6):
+    def compute_correlation(self, threshold=0.68):
         model_eval_list = [res['model_eval'] for res in self.res_list]
         human_eval_list = [res['human_eval'] for res in self.res_list]
 
@@ -92,7 +99,8 @@ class ASoundBeginEnd(ASound):
                 if len(data['audio_list']) != 1:
                     idx_list.append(FAILED_TOKEN)
                 else:
-                    audio_list.append(data['audio_list'][0][: SAMPLE_RATE * 3])
+                    sample_size = min(4, len(data['audio_list'][0]) // (SAMPLE_RATE * 2))
+                    audio_list.append(data['audio_list'][0][: SAMPLE_RATE * sample_size])
                     label_list.append(inst['start'])
                     human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
                     idx_list[-1].append(idx)
@@ -101,7 +109,8 @@ class ASoundBeginEnd(ASound):
                 if len(data['audio_list']) != 1:
                     idx_list.append(FAILED_TOKEN)
                 else:
-                    audio_list.append(data['audio_list'][0][-SAMPLE_RATE * 3:])
+                    sample_size = min(4, len(data['audio_list'][0]) // (SAMPLE_RATE * 2))
+                    audio_list.append(data['audio_list'][0][- SAMPLE_RATE * sample_size:])
                     label_list.append(inst['end'])
                     human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
                     idx_list[-1].append(idx)
@@ -356,18 +365,24 @@ class AMusicAttribute(EvalUnit):
                 inst_list.append(inst)
         if len(inst_list) == 0:
             return
-        # from libs.EfficientAT.ex_openmic import inference
-        # scores = inference([data['audio_list'][0] for data in self.res_list], [inst['instrument'] for inst in self.inst_list])
-        # for data, score in zip(self.res_list, scores):
-        #     data['model_eval'][1] = score
-        # self.save()
 
+        # # ClapScore audio-text
         # labels = [inst['instrument'] + ' music' for inst in self.inst_list]
         # scores = compute_clapscore_at([data['audio_list'][0] for data in self.res_list], labels)
         # for data, score in zip(self.res_list, scores):
-        #     data['model_eval'][1]= score
+        #     data['model_eval'] = score
         # self.save()
 
+        # # Gemini-2.0
+        # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {l}? Explain step "
+        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[a])
+        #               for a, l in zip(audio_list, label_list)]
+        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
+        # for idx, data in enumerate(self.res_list):
+        #     data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        # self.save()
+
+        # ClapScore audio-audio
         for data, inst in zip(res_list, inst_list):
             if len(data['audio_list']) != 1:
                 data['model_eval'] = 0.0
@@ -468,12 +483,12 @@ class AMusicInstrument(EvalUnit):
     def human_evaluate(self):
         self.eval_unit.human_evaluate()
 
-    def compute_accuracy(self, threshold=0.58):
+    def compute_accuracy(self, threshold=0.62):
         model_eval_list = [data['model_eval'] for data in self.eval_unit.res_list if 'model_eval' in data]
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
         return np.mean(model_eval_list)
 
-    def compute_correlation(self, threshold=0.58):
+    def compute_correlation(self, threshold=0.62):
         model_eval_list = [data['model_eval'] for data in self.eval_unit.res_list if 'model_eval' in data]
         human_eval_list = [data['human_eval_score'] for data in self.eval_unit.res_list if 'human_eval_score' in data]
 
@@ -500,15 +515,12 @@ class AMusicIntensity(EvalUnit):
     inst_name = 'a_music_intensity'
 
     def evaluate(self):
-        timestep = 3.0
-        distance = 4
-
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['audio_list']) != 1:
                 data['auto_eval'] = 0.0
                 continue
             audio = librosa.effects.trim(data['audio_list'][0])[0]
-            audio = audio[round(0.1 * SAMPLE_RATE): -round(0.1 * SAMPLE_RATE)]
+            timestep = min(4, len(audio) // (SAMPLE_RATE * 2))
             if inst['intensity'][0] == 'start':
                 audio = audio[: round(timestep * SAMPLE_RATE)]
             else:
@@ -516,11 +528,24 @@ class AMusicIntensity(EvalUnit):
             intensity = librosa.feature.rms(y=audio)[0]
             norm_intensity = (intensity - min(intensity)) / (max(intensity) - min(intensity))
             times = librosa.frames_to_time(np.arange(len(norm_intensity)), sr=SAMPLE_RATE)
-            peaks = find_peaks(norm_intensity, distance=distance)[0]
+            peaks = list(find_peaks(norm_intensity, distance=4)[0])
+            if peaks[0] >= 5:
+                peaks.insert(0, 0)
+            if peaks[-1] < len(norm_intensity) - 5:
+                peaks.append(len(norm_intensity) - 1)
             slope, _, _, _, stderr = linregress(times[peaks], norm_intensity[peaks])
-            trend = 'fade in' if (slope > 0.19 and stderr < 0.8) else \
-                ('fade out' if (slope < -0.19 and stderr < 0.8) else FAILED_TOKEN)
+            trend = 'fade in' if (slope > 0.18 and stderr < 0.04) else \
+                ('fade out' if (slope < -0.18 and stderr < 0.04) else FAILED_TOKEN)
             data['auto_eval'] = float(trend == inst['intensity'][1])
+
+            # # Visualize
+            # plt.plot(times, norm_intensity * 100.0, label='Intensity', alpha=0.6)
+            # plt.plot(times[peaks], norm_intensity[peaks] * 100.0, label='Peaks', alpha=0.6)
+            # plt.xlabel('Time (s)')
+            # plt.ylabel('Intensity (%)')
+            # plt.title(f'Normalized slop: {slope:.3f}, Stderr: {stderr:.3f}')
+            # plt.legend()
+            # plt.show()
         self.save()
 
     def compute_accuracy(self):
@@ -532,6 +557,22 @@ class AMusicExclude(EvalUnit):
     inst_name = 'a_music_exclude'
 
     def evaluate(self):
+        # # ClapScore audio-text
+        # labels = [inst['instrument'] + ' music' for inst in self.inst_list]
+        # scores = compute_clapscore_at([data['audio_list'][0] for data in self.res_list], labels)
+        # for data, score in zip(self.res_list, scores):
+        #     data['model_eval'] = score
+        # self.save()
+
+        # # Gemini-2.0
+        # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {l}? Explain step "
+        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[a])
+        #               for a, l in zip(audio_list, label_list)]
+        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
+        # for idx, data in enumerate(self.res_list):
+        #     data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        # self.save()
+
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['audio_list']) != 1:
                 data['model_eval'] = 1.0
@@ -576,12 +617,12 @@ class AMusicExclude(EvalUnit):
             data['human_eval'] = float(interface.eval_list[data['human_eval']]) if 'human_eval' != FAILED_TOKEN else 0.0
         self.save()
 
-    def compute_accuracy(self, threshold=0.585):
+    def compute_accuracy(self, threshold=0.62):
         model_eval_list = [data['model_eval'] for data in self.res_list]
         model_eval_list = [float(model_eval < threshold) for model_eval in model_eval_list]
         return np.mean(model_eval_list)
 
-    def compute_correlation(self, threshold=0.585):
+    def compute_correlation(self, threshold=0.62):
         model_eval_list = [data['model_eval'] for data in self.res_list]
         human_eval_list = [data['human_eval'] for data in self.res_list]
 
@@ -593,4 +634,4 @@ class AMusicExclude(EvalUnit):
 
 
 if __name__ == '__main__':
-    a = ASpeechImitate(model_name='AudioAgent', sample_size=1)
+    pass

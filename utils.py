@@ -11,11 +11,9 @@ import parselmouth
 import numpy as np
 import soundfile as sf
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from nltk.tokenize import word_tokenize
-from dreamsim import dreamsim
 from google import genai
 from google.genai import types
 from tqdm import tqdm
@@ -26,7 +24,7 @@ from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
 from sklearn.metrics import cohen_kappa_score
-from transformers import  AutoProcessor, ClapModel, AutoModelForSpeechSeq2Seq, Wav2Vec2FeatureExtractor, WavLMForXVector
+from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 
 OPENAI_KEY = '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'
 GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
@@ -202,7 +200,7 @@ def query_gemini(index, query, model, temperature):
 
 
 def batch_query_qwen(query_list, temperature):
-    from transformers import Qwen2_5_VLForConditionalGeneration, AutoTokenizer, AutoProcessor
+    from transformers import Qwen2_5_VLForConditionalGeneration
     from qwen_vl_utils import process_vision_info
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
@@ -250,6 +248,7 @@ def calculate_ssim(img1, img2):
 
 dreamsim_model = None
 def calculate_dreamsim(img1, img2):
+    from dreamsim import dreamsim
     def preprocess(img):
         img = img.convert('RGB')
         return transforms.Compose([
@@ -339,6 +338,7 @@ def symmetry_condition(image: Image.Image, condition: str):
 
 
 def compute_clapscore_at(audio_list, text_list):
+    from transformers import ClapModel
     with torch.no_grad():
         audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000) for audio in audio_list]
         model = ClapModel.from_pretrained("laion/clap-htsat-unfused").to('cuda')
@@ -350,6 +350,7 @@ def compute_clapscore_at(audio_list, text_list):
 
 
 def compute_clapscore_aa(audio, ref_audio_list):
+    from transformers import ClapModel
     with torch.no_grad():
         audio = librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000)
         ref_audio_list = [librosa.resample(ref_audio, orig_sr=SAMPLE_RATE, target_sr=48000) for ref_audio in ref_audio_list]
@@ -409,14 +410,13 @@ def find_optimal_thresholds(pred_list, label_list):
     return best_low_threshold, best_high_threshold
 
 
-def audio_segmentation(audio, top_db=60, min_duration=1.0):
+def audio_segmentation(audio, top_db=40, min_duration=1.0):
     non_silent_intervals = librosa.effects.split(audio, top_db=top_db)
     segments = []
-    min_silence_samples = int(min_duration * SAMPLE_RATE)
+    min_frames = int(min_duration * SAMPLE_RATE)
     previous_end = non_silent_intervals[0][0]
-
     for i in range(len(non_silent_intervals) - 1):
-        if non_silent_intervals[i][1] + min_silence_samples < non_silent_intervals[i + 1][0]:
+        if non_silent_intervals[i][1] + min_frames < non_silent_intervals[i + 1][0]:
             segments.append(audio[previous_end: non_silent_intervals[i][1]])
             previous_end = non_silent_intervals[i + 1][0]
     if previous_end < non_silent_intervals[-1][1]:
@@ -516,6 +516,7 @@ def calculate_volume(audio):
 
 
 def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
+    from transformers import Wav2Vec2FeatureExtractor, WavLMForXVector
     feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained('microsoft/wavlm-base-sv')
     model = WavLMForXVector.from_pretrained('microsoft/wavlm-base-sv').to('cuda')
     audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=16000) for audio in audio_list]
@@ -581,6 +582,7 @@ def extract_json(text):
             except json.JSONDecodeError:
                 return {}
     return {}
+
 
 def extract_list(text):
     match = re.search(r'\[.*]?', text)

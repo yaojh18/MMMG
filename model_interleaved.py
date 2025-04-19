@@ -1,11 +1,11 @@
 import sys
+import itertools
 
 from model import *
 from model_image import *
 from model_audio import *
 from utils import *
 from prompt import I_AGENT_PROMPT, A_AGENT_PROMPT
-from pathlib import Path
 
 
 ### Image generation and editing model
@@ -49,7 +49,7 @@ class AudioAgent(Model):
     speech_model_name = 'VoxInstruct'
     music_model_name = 'BlankAudioModel'
 
-    def __init__(self, mllm='gemini-1.5-pro'):
+    def __init__(self, mllm='gemini-2.0-flash'):
         self.mllm = GeminiModel(mllm, system_prompt=A_AGENT_PROMPT)
         self.models = (eval(f'{self.sound_model_name}()'), eval(f'{self.speech_model_name}()'), eval(f'{self.music_model_name}()'))
 
@@ -141,13 +141,14 @@ class AudioAgent(Model):
                     tts_query_list.append(output['audio_list'][i])
                     output['audio_list'][i] = idx
                     idx += 1
-        responses = self.models[1].generate(tts_query_list)
-        responses = [res['audio_list'][0] for res in responses]
-        for output in output_list:
-            for i in range(len(output['audio_list'])):
-                if isinstance(output['audio_list'][i], int):
-                    output['audio_list'][i] = responses[output['audio_list'][i]]
-            output['audio_list'] = [a for a in output['audio_list'] if a is not FAILED_TOKEN]
+        if len(tts_query_list) > 0:
+            responses = self.models[1].generate(tts_query_list)
+            responses = [res['audio_list'][0] for res in responses]
+            for output in output_list:
+                for i in range(len(output['audio_list'])):
+                    if isinstance(output['audio_list'][i], int):
+                        output['audio_list'][i] = responses[output['audio_list'][i]]
+                output['audio_list'] = [a for a in output['audio_list'] if a is not FAILED_TOKEN]
         return output_list
 
 
@@ -160,11 +161,17 @@ class VoiceLDMAgent(AudioAgent):
 
 
 class ImageAgent(Model):
-    def __init__(self, mllm='gpt-4o-2024-11-20', diffusion='dalle3'):
-        self.mllm = OpenAIModel(mllm, system_prompt=I_AGENT_PROMPT)
-        self.diffusion = {
-            'dalle3': Dalle3(revise=False)
-        }[diffusion]
+    mllm_name: str
+    diffusion_name: str
+
+    def __init__(self):
+        if 'gpt' in self.mllm_name:
+            self.mllm = OpenAIModel(self.mllm_name, system_prompt=I_AGENT_PROMPT)
+        elif 'gemini' in self.mllm_name:
+            self.mllm = GeminiModel(self.mllm_name, system_prompt=I_AGENT_PROMPT)
+        else:
+            raise NotImplementedError
+        self.diffusion = eval(f'{self.diffusion_name}()')
 
     def generate(self, query_list):
         responses = self.mllm.generate(query_list)
@@ -187,32 +194,33 @@ class ImageAgent(Model):
             idx += len(image_prompts)
         res_list = self.diffusion.generate(diffusion_query_list)
         for output in output_list:
-            output['image_list'] = [res_list[i]['image_list'][0] for i in output['image_list']]
+            output['image_list'] = list(itertools.chain(*[res_list[i]['image_list'] for i in output['image_list']]))
         return output_list
 
 
 ### Interleaved I+T model
 
-class Gemini2Flash(Model):
-    model_name = 'gemini-2.0-flash-exp'
+class Gemini2(Model):
+    model_name = 'gemini-2.0-flash'
+
     def __init__(self):
         super().__init__()
 
     def generate(self, query_list):
         client = genai.Client(api_key=GEMINI_KEY)
         res_list = []
-        
+
         for query in tqdm(query_list):
             try:
                 contents = []
                 text = query.get("instruction", "")
                 if text:
                     contents.append(text)
-                
+
                 images = query.get("image_list", [])
                 for img_path in images:
                     contents.append(Image.open(img_path))
-                
+
                 response = client.models.generate_content(
                     model=self.model_name,
                     contents=contents,
@@ -231,7 +239,7 @@ class Gemini2Flash(Model):
 
                 res_list.append({
                     "query": query,
-                    "response": IMAGE_TOKEN(0) + generated_text, # TODO: multiple image tokens handling
+                    "response": IMAGE_TOKEN(0) + generated_text,  # TODO: multiple image tokens handling
                     "image_list": generated_images,
                     "audio_list": [],
                 })
@@ -240,8 +248,8 @@ class Gemini2Flash(Model):
                 print(f"Error processing query: {query}. Error: {e}")
                 res_list.append({
                     "query": query,
-                    "response": IMAGE_TOKEN(0),
-                    "image_list": [Image.new("RGB", (1024, 1024), "white")],
+                    "response": '',
+                    "image_list": [],
                     "audio_list": [],
                 })
 
@@ -339,21 +347,17 @@ class Anole(Model):
 
             except Exception as e:
                 print(f"Error generating content for query: {query}. Error: {e}")
-                default_image = Image.new("RGB", (1024, 1024), "white")
-                
                 output_list.append({
                     "query": query,
-                    "response": "<image_start><image_{0}><image_end>",
-                    "image_list": [default_image],
+                    "response": "",
+                    "image_list": [],
                     "audio_list": [],
                 })
                 
         return output_list
 
 
-
 class Emu3(Model):
-    model_name = 'Emu3'
     def __init__(self):
         super().__init__()
 
@@ -437,8 +441,8 @@ class Emu3(Model):
                 print(f"Error generating content for query: {query}. Error: {e}")
                 res_list.append({
                     "query": query,
-                    "response": "<image_start><image_{0}><image_end>",
-                    "image_list": [Image.new("RGB", (1024, 1024), "white")],
+                    "response": "",
+                    "image_list": [],
                     "audio_list": [],
                 })
 

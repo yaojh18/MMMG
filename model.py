@@ -49,15 +49,15 @@ class RandomModel(Model):
     def inst_map(inst_name):
         if (inst_name.startswith('i_consistency') or inst_name.startswith('i_edit')
                 or inst_name.startswith('i_structure') or inst_name.startswith('it')):
-            return ['GPT4o', 'Gemini2', 'Anole', 'Emu3', 'Showo', 'Janus']
+            return ['Anole', 'Showo', 'Emu3', 'Janus', 'Gemini2', 'GPT4o']
         if inst_name.startswith('i'):
             return ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3']
         if inst_name.startswith('a_sound'):
-            return ['Tango2', 'TangoFlux', 'StableAudio']
+            return ['StableAudio', 'AudioLDM2', 'AudioGen', 'Tango2', 'MakeAnAudio2']
         if inst_name.startswith('a_music'):
-            return ['MusicGen', 'YuE', 'StableMusic']
+            return ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
         if inst_name.startswith('a_speech'):
-            return ['QwenAudio', 'VoxInstructAgent', 'VoiceLDMAgent']
+            return ['VoxInstructAgent', 'VoiceLDMAgent']
         raise NotImplementedError(inst_name)
 
     def generate(self, inst_name):
@@ -101,9 +101,7 @@ class VoxInstruct(Model):
         os.chdir("../..")
         res_list = []
         for idx, query in enumerate(query_list):
-            audio, sr = librosa.load(f'./models/VoxInstruct/output/{idx}.wav')
-            if sr != SAMPLE_RATE:
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
+            audio, sr = librosa.load(f'./models/VoxInstruct/output/{idx}.wav', sr=SAMPLE_RATE)
             res_list.append({
                 'query': query,
                 'response': AUDIO_TOKEN(0),
@@ -162,6 +160,7 @@ class VoiceLDM(Model):
                 'audio_list': [audio],
             })
         return res_list
+
 
 class OpenAIModel(Model):
     def __init__(self, model_name, system_prompt=''):

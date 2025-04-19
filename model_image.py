@@ -4,6 +4,7 @@ import os
 from model import Model
 from utils import *
 
+
 class Dalle3(Model):
     model_name = 'dall-e-3'
 
@@ -13,7 +14,7 @@ class Dalle3(Model):
 
     @staticmethod
     def generate_image(index, prompt, model_name):
-        retry_count = 4
+        retry_count = 2
         retry_interval = 2
 
         if 'dall' in model_name:
@@ -44,7 +45,7 @@ class Dalle3(Model):
                 retry_interval *= 2
                 time.sleep(retry_interval)
         print('Fail to get response.')
-        return index, Image.new("RGB", (1024, 1024), "white")
+        return index, None
 
     def generate(self, query_list):
         query_list = [self.revise_prompt + query['instruction'] for query in query_list]
@@ -53,8 +54,8 @@ class Dalle3(Model):
         for query, image in zip(query_list, image_list):
             res_list.append({
                 'query': query,
-                'response': IMAGE_TOKEN(0),
-                'image_list': [image],
+                'response': IMAGE_TOKEN(0) if image is not None else '',
+                'image_list': [image] if image is not None else [],
                 'audio_list': []
             })
         return res_list
@@ -69,7 +70,7 @@ class Imagen3(Model):
 
     @staticmethod
     def generate_image_from_google(index, prompt, model_name):
-        retry_count = 4
+        retry_count = 2
         retry_interval = 2
         client = genai.Client(api_key=GEMINI_KEY)
 
@@ -93,7 +94,7 @@ class Imagen3(Model):
                 time.sleep(retry_interval * (2 ** retry_count))
 
         print('Failed to get response.')
-        return index, Image.new("RGB", (1024, 1024), "white")
+        return index, None
 
     def generate(self, query_list):
         query_list = [query['instruction'] for query in query_list]
@@ -102,8 +103,8 @@ class Imagen3(Model):
         for query, image in zip(query_list, image_list):
             res_list.append({
                 'query': query,
-                'response': IMAGE_TOKEN(0),
-                'image_list': [image],
+                'response': IMAGE_TOKEN(0) if image is not None else '',
+                'image_list': [image] if image is not None else [],
                 'audio_list': []
             })
         return res_list
@@ -131,7 +132,6 @@ class StableDiffusion3_5(Model):
             trust_remote_code=True
         )
         self.pipeline.enable_model_cpu_offload()
-
 
     def generate(self, query_list):
         prompts = [query['instruction'] for query in query_list]
@@ -169,7 +169,7 @@ class ReplicateModel(Model):
     @staticmethod
     def generate_image(index, query, model_name, image_size):
         import replicate
-        retry_count = 4
+        retry_count = 2
         retry_interval = 2
         for _ in range(retry_count):
             try:
@@ -195,7 +195,7 @@ class ReplicateModel(Model):
                 time.sleep(retry_interval * (2 ** retry_count))
 
         print('Failed to get response.')
-        return index, Image.new("RGB", [int(s) for s in image_size.split('x')], "white")
+        return index, None
 
     def generate(self, query_list):
         images = batch(self.generate_image, query_list, image_size=self.image_size, model_name=self.model_name, num_worker=4)
@@ -203,8 +203,8 @@ class ReplicateModel(Model):
         for image, query in zip(images, query_list):
             output_list.append({
                 "query": query,
-                "response": IMAGE_TOKEN(0),
-                "image_list": [image],
+                'response': IMAGE_TOKEN(0) if image is not None else '',
+                'image_list': [image] if image is not None else [],
                 "audio_list": [],
             })
         return output_list

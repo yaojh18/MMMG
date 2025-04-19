@@ -1,9 +1,11 @@
+import json
+import cairosvg
 import os
 import random
 import shutil
-
+import matplotlib.pyplot as plt
 from datasets import load_dataset
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 
 from interface import LabelBBoxInterface
 from utils import *
@@ -112,7 +114,7 @@ def sample_from_openmic():
     id_counts = df['sample_key'].value_counts()
     unique_instruments = id_counts[id_counts == 1].index
     df = df[df['sample_key'].isin(unique_instruments)]
-    instrument_list = ['banjo', 'bass', 'cello', 'clarinet', 'cymbals', 'mandolin', 'trombone', 'trumpet', 'ukulele', 'violin']
+    instrument_list = ['piano']
     df = df[df['instrument'].isin(instrument_list)]
     df = df.groupby('instrument')
     for instrument_name, group_data in df:
@@ -137,5 +139,18 @@ def paraphrasing_dataset(file_name):
             file.write(json.dumps(res) + '\n')
 
 
+def sample_from_star_vector():
+    dataset = load_dataset('starvector/svg-emoji')
+    collected_data = []
+    for data in dataset['test']:
+        if 2000 < len(data['Svg']) > 4000:
+            collected_data.append(data['Svg'])
+    with open(f'./seed_instruction/it_coherence_code.jsonl', 'w', encoding='utf-8') as f:
+        for i, data in enumerate(collected_data[:20]):
+            f.write(json.dumps({f'instruction': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser.\n", 'ref_image_list': [i], 'instruction_para': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser.\n"}) + '\n')
+    for i, data in enumerate(collected_data[:20]):
+        cairosvg.svg2png(bytestring=data, write_to=f'./seed_instruction/image/it_coherence_code_{i}.png', output_width=1024, output_height=1024)
+
+
 if __name__ == '__main__':
-    pass
+    sample_from_star_vector()

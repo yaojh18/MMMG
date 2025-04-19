@@ -97,6 +97,7 @@ class IConsistency3DScene(IConsistency3DObject):
 
 class AConsistencyConversation(EvalUnit):
     inst_name = 'a_consistency_conversation'
+
     def evaluate(self):
         # Transcribe the script
         transcripts, _ = transcribe_speech(list(itertools.chain(*[data['audio_list'] for data in self.res_list])))
@@ -259,6 +260,9 @@ class IStructure(EvalUnit):
         for data, inst in zip(self.res_list, self.inst_list):
             texts = re.split(text_pattern, data['response'])
             modalities = re.findall(mm_pattern, data['response'])
+            if len(texts) != len(modalities) + 1:
+                data['auto_eval'] = 0.0
+                continue
             mm_list = '' if texts[0] == '' else 't'
             for t, mm in zip(texts[1:], modalities):
                 if mm.startswith('image'):
@@ -290,7 +294,7 @@ class ITCoherence(EvalUnit):
         self.idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             texts = re.split(text_pattern, data['response'])
-            if len(texts) != 2:
+            if len(texts) != 2 or len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
             # texts = [t.strip() for t in texts if t.strip() != '']
@@ -624,6 +628,7 @@ class ITCoherenceOCR(ITCoherence, IOCR):
 
 class ITCoherenceMath(ITCoherenceColor):
     inst_name = 'it_coherence_math'
+
     def evaluate(self):
         self.load_inst_mm()
         super().evaluate()
@@ -659,50 +664,24 @@ class ITCoherenceMath(ITCoherenceColor):
         human_res_list.append(data)
 
 
-class ITCoherenceCode(ITCoherenceColor):
+class ITCoherenceCode(EvalUnit):
     inst_name = 'it_coherence_code'
 
-    @staticmethod
-    def html_to_image(html_content):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page(viewport={"width": 960, "height": 540})
-            html_b64 = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
-            page.goto(f"data:text/html;base64,{html_b64}")
-            screenshot_bytes = page.screenshot()
-            browser.close()
-            image = Image.open(BytesIO(screenshot_bytes))
-            return image
-
     def evaluate(self):
+        self.load_inst_mm()
+        text_pattern = r'<image_start><image_\d+><image_end>'
         for data, inst in zip(self.res_list, self.inst_list):
-            html_code = re.search(r'```html(.*?)```', data['response'], re.DOTALL)
-            if html_code is None:
-                data['image_list'] = [data['image_list'][0].copy(), Image.new("RGB", (960, 540), "white")]
-            try:
-                screenshot = self.html_to_image(html_code.group(1))
-                data['image_list'] = [data['image_list'][0].copy(), screenshot]
-            except Exception as e:
-                data['image_list'] = [data['image_list'][0].copy(), Image.new("RGB", (960, 540), "white")]
-        self.save(save_all=True)
-        super().evaluate()
+            texts = re.split(text_pattern, data['response'])
+            if len(texts) != 2 or len(data['image_list']) != 1:
+                data['auto_eval'] = 0.0
+            else:
+                data['auto_eval'] = calculate_dreamsim(data['image_list'][0], inst['ref_image_list'][0])
+        self.save()
 
-    def model_process_data(self, data, inst, res, queries):
-        queries += [form_mm_query(
-            I_OBJECT_EXIST_COT_PROMPT(inst['object']),
-            images=[img],
-        ) for img in data['image_list']]
-        data['object'], data['model_eval'] = inst['object'], [self.idx, self.idx + 1]
-        self.idx += 2
-
-    def human_process_data(self, data, human_inst_list, human_res_list):
-        human_inst_list += [f"Is/Are there {data['object']} in the given image?\n"] * 2
-        human_res_list += [{'image_list': [data['image_list'][0]]}, {'image_list': [data['image_list'][1]]}]
-        data['human_eval'] = [self.idx, self.idx + 1]
-        self.idx += 2
+    def compute_accuracy(self):
+        auto_eval_list = [res['auto_eval'] for res in self.res_list]
+        return np.mean(auto_eval_list)
 
 
 if __name__ == '__main__':
-    a = ITCoherenceMath(model_name='Anole', sample_size=1)
-    # a.evaluate()
+    pass

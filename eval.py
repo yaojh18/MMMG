@@ -31,7 +31,7 @@ class EvalUnit:
             model = eval(f'{model_name}()')
             query_list = []
             for inst in self.inst_list:
-                query = {'instruction': inst['instruction']}
+                query = {'instruction': inst['instruction_para']}
                 if 'image_list' in inst:
                     query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
                 if 'audio_list' in inst:
