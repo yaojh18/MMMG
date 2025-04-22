@@ -64,8 +64,9 @@ class EvalPipeline:
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(task_name)
-            if pd.isna(row['human_accuracy']):
-                task.human_evaluate()
+            task.evaluate()
+            # if pd.isna(row['human_accuracy']):
+            #     task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.loc[index, ['human_accuracy', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)

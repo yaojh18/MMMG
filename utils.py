@@ -4,7 +4,6 @@ import base64
 import collections
 import re
 import librosa
-import evaluate
 import json
 import colorsys
 import parselmouth
@@ -78,6 +77,7 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
 
 
 def form_mm_query(text, images=[], audios=[], model=''):
+    return form_qwen_mm_query(text, images, audios)
     model = model or VISION_MODEL
     if model == 'gemini':
         return form_gemini_mm_query(text, images, audios)
@@ -137,6 +137,7 @@ def form_qwen_mm_query(text, images=[], audios=[]):
 
 
 def query_vlm(query_list, model=''):
+    return batch_query_qwen(query_list, temperature=0.0)
     model = model or VISION_MODEL
     if model == 'gemini':
         return batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
@@ -425,6 +426,7 @@ def audio_segmentation(audio, top_db=40, min_duration=1.0):
 
 
 def transcribe_speech(audio_list, text_list=None, language='english'):
+    import evaluate
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     model = AutoModelForSpeechSeq2Seq.from_pretrained("BELLE-2/Belle-whisper-large-v3-zh" if language == 'chinese' else "openai/whisper-large-v3")
     wer = evaluate.load('cer') if language == 'chinese' else evaluate.load('wer')

@@ -200,8 +200,8 @@ class ImageAgent(Model):
 
 ### Interleaved I+T model
 
-class Gemini2(Model):
-    model_name = 'gemini-2.0-flash'
+class Gemini(Model):
+    model_name = 'gemini-2.0-flash-exp-image-generation'
 
     def __init__(self):
         super().__init__()
@@ -210,7 +210,7 @@ class Gemini2(Model):
         client = genai.Client(api_key=GEMINI_KEY)
         res_list = []
 
-        for query in tqdm(query_list):
+        for query in tqdm(query_list[0:1]):
             try:
                 contents = []
                 text = query.get("instruction", "")
@@ -264,7 +264,7 @@ class Anole(Model):
         self.model = ChameleonForConditionalGeneration.from_pretrained(
             "leloy/Anole-7b-v0.1-hf",
             torch_dtype=torch.bfloat16,
-            attn_implementation="flash_attention_2",
+            # attn_implementation="flash_attention_2",
             device_map="auto",
             trust_remote_code=True,
             token=HF_KEY,
@@ -385,7 +385,7 @@ class Emu3(Model):
         from transformers.generation.configuration_utils import GenerationConfig
 
         res_list = []
-        for query in tqdm(query_list):
+        for query in tqdm(query_list[0:1]):
             try:
                 instruction = query.get("instruction", "")
                 images = query.get("image_list", [])
@@ -427,12 +427,21 @@ class Emu3(Model):
                 )
                 
                 decoded_outputs = self.processor.decode(outputs[0])
-                response = "".join([str(item) for item in decoded_outputs if not isinstance(item, Image.Image)])
-                image_list = [item for item in decoded_outputs if isinstance(item, Image.Image)]
+                
+                parts, image_list = [], []
+                for item in decoded_outputs:
+                    if isinstance(item, Image.Image):
+                        token = IMAGE_TOKEN(len(image_list))  
+                        parts.append(token)
+                        image_list.append(item)
+                    else:
+                        parts.append(str(item))
+
+                response = "".join(parts)
 
                 res_list.append({
                     "query": query,
-                    "response": IMAGE_TOKEN(0) + response, # TODO handle multiple image tokens
+                    "response": response,  
                     "image_list": image_list,
                     "audio_list": [],
                 })
@@ -447,3 +456,39 @@ class Emu3(Model):
                 })
 
         return res_list
+
+
+class SpiritLM(Model):
+    def __init__(self):
+        super().__init__()
+        from models.spiritlm.spiritlm.model.spiritlm_model import Spiritlm
+
+        self.model = Spiritlm("spirit-lm-expressive-7b")
+
+    def generate(self, query_list):
+        res_list = []
+        for query in tqdm(query_list):
+            instruction = query.get("instruction", "")
+            audios = query.get("audio_list", [])
+            
+            outputs = spirit_lm.generate(
+                output_modality=OutputModality.ARBITRARY,
+                interleaved_inputs=[
+                    GenerationInput(
+                        content=instruction,
+                        content_type=ContentType.TEXT,
+                    ),
+                    GenerationInput(
+                        content=audios,
+                        content_type=ContentType.SPEECH,
+                    )
+                ],
+                generation_config=GenerationConfig(
+                    temperature=0.9,
+                    top_p=0.95,
+                    max_new_tokens=512,
+                    do_sample=True,
+                ),
+            )
+
+
