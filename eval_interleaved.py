@@ -684,4 +684,5 @@ class ITCoherenceCode(EvalUnit):
 
 
 if __name__ == '__main__':
-    pass
+    a = IConsistencyCompose(model_name='Emu3', sample_size=1)
+    # a.evaluate()

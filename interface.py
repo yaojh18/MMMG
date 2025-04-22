@@ -2,7 +2,6 @@ import threading
 import random
 import time
 
-import gradio as gr
 import io
 import sys
 from abc import abstractmethod
@@ -216,6 +215,7 @@ class LabelBBoxInterface(Interface):
         self.res_list = [FAILED_TOKEN] * len(self.data_list)
 
     def construct_interface(self):
+        import gradio as gr
         from gradio_image_prompter import ImagePrompter
         from gradio_image_prompter.image_prompter import PromptValue
         with gr.Blocks() as interface:
@@ -265,6 +265,7 @@ class LabelBBoxInterface(Interface):
 
     def update_interface(self, current_index, step, image_prompter):
         from gradio_image_prompter.image_prompter import PromptValue
+        import gradio as gr
         points = image_prompter["points"]
         self.res_list[current_index] = (int(points[-1][0]), int(points[-1][1]), int(points[-1][3]), int(points[-1][4])) if len(points) > 0 else None
         current_index += step
