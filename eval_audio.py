@@ -29,7 +29,7 @@ class ASound(EvalUnit):
         #               for a, l in zip(audio_list, label_list)]
         # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
         # for idx, data in enumerate(self.res_list):
-        #     data['model_eval'] = [float('yes' in responses[i].lower()) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        #     data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         # self.save()
 
         # CLAPScore audio-audio
@@ -367,19 +367,19 @@ class AMusicAttribute(EvalUnit):
             return
 
         # # ClapScore audio-text
-        # labels = [inst['instrument'] + ' music' for inst in self.inst_list]
-        # scores = compute_clapscore_at([data['audio_list'][0] for data in self.res_list], labels)
-        # for data, score in zip(self.res_list, scores):
+        # labels = [inst['instrument'] + ' music' for inst in inst_list]
+        # scores = compute_clapscore_at([data['audio_list'][0] for data in res_list], labels)
+        # for data, score in zip(res_list, scores):
         #     data['model_eval'] = score
         # self.save()
 
         # # Gemini-2.0
-        # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {l}? Explain step "
-        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[a])
-        #               for a, l in zip(audio_list, label_list)]
+        # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {inst['instrument']}? Explain step "
+        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[data['audio_list'][0]])
+        #               for data, inst in zip(res_list, inst_list)]
         # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
-        # for idx, data in enumerate(self.res_list):
-        #     data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        # for idx, data in enumerate(res_list):
+        #     data['model_eval'] = float('yes' in responses[idx].strip().lower()[-20:])
         # self.save()
 
         # ClapScore audio-audio
@@ -565,12 +565,12 @@ class AMusicExclude(EvalUnit):
         # self.save()
 
         # # Gemini-2.0
-        # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {l}? Explain step "
-        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[a])
-        #               for a, l in zip(audio_list, label_list)]
+        # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {inst['instrument']}? Explain step "
+        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[data['audio_list'][0]])
+        #               for data, inst in zip(self.res_list, self.inst_list)]
         # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
         # for idx, data in enumerate(self.res_list):
-        #     data['model_eval'] = [float('yes' in responses[i].strip().lower()[-20:]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
+        #     data['model_eval'] = float('yes' in responses[idx].strip().lower()[-20:])
         # self.save()
 
         for data, inst in zip(self.res_list, self.inst_list):

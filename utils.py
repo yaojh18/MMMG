@@ -215,7 +215,7 @@ def batch_query_qwen(query_list, temperature):
         generation_kwargs['top_p'] = 1.0
         generation_kwargs['do_sample'] = True
 
-    for query in query_list:
+    for query in tqdm(query_list):
         text = processor.apply_chat_template(
             query, tokenize=False, add_generation_prompt=True, use_fast=True
         )

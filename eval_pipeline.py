@@ -172,19 +172,19 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    # parser.add_argument('--model_name', type=str, default='Tango2', help='Name of the model.')
+    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    parser.add_argument('--model_name', type=str, default='RandomModel_0', help='Name of the model.')
+    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    args = parser.parse_args()
+
+    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    pipeline.evaluate()
+
+    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='aso', help='Subcategory of the benchmark: i, a, it, at.')
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
-    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    # pipeline.evaluate()
-
-    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    parser.add_argument('--category', type=str, default='aso', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    args = parser.parse_args()
-
-    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.rank_models()
+    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    # benchmark.rank_models()
