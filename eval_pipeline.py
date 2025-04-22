@@ -64,8 +64,9 @@ class EvalPipeline:
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(task_name)
-            if pd.isna(row['human_accuracy']):
-                task.human_evaluate()
+            task.evaluate()
+            # if pd.isna(row['human_accuracy']):
+            #     task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.loc[index, ['human_accuracy', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
@@ -172,19 +173,19 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    # parser.add_argument('--model_name', type=str, default='Tango2', help='Name of the model.')
+    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    parser.add_argument('--model_name', type=str, default='RandomModel_0', help='Name of the model.')
+    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
+    args = parser.parse_args()
+
+    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    pipeline.human_evaluate()
+
+    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='aso', help='Subcategory of the benchmark: i, a, it, at.')
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
-    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    # pipeline.evaluate()
-
-    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    parser.add_argument('--category', type=str, default='aso', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    args = parser.parse_args()
-
-    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.rank_models()
+    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    # benchmark.rank_models()
