@@ -255,12 +255,12 @@ class ISpacial(EvalUnit):
             print('Human evaluation finished!')
 
     def compute_accuracy(self):
-        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
         return np.mean(model_eval_list)
 
     def compute_correlation(self):
-        human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        human_eval_list = [np.prod(res['human_eval']) for res in self.res_list]
+        model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
         return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
@@ -440,6 +440,7 @@ class IOCR(EvalUnit):
         return normalized_text or FAILED_TOKEN
 
     def _compute_accuracy(self, label_list, model_eval_list, return_list=False):
+        import evaluate
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
                     for model_eval, label in zip(model_eval_list, label_list)]
@@ -448,6 +449,7 @@ class IOCR(EvalUnit):
         return wer_list
 
     def _compute_correlation(self, label_list, model_eval_list, human_eval_list):
+        import evaluate
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         human_wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
                     for human_eval, label in zip(human_eval_list, label_list)]
@@ -825,7 +827,7 @@ class IEditAdd(EvalUnit):
         self.save()
 
     def compute_accuracy(self):
-        auto_eval_list = [np.mean(res['auto_eval']) for res in self.res_list]
+        auto_eval_list = [res['auto_eval'][0] * res['auto_eval'][1] for res in self.res_list]
         return np.mean(auto_eval_list)
 
     def compute_correlation(self):

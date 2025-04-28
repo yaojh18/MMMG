@@ -305,13 +305,13 @@ class ASpeechImitate(EvalUnit):
             data['human_eval'] = float(interface.eval_list[data['human_eval']] == 1) if data['human_eval'] != FAILED_TOKEN else 0.0
         self.save()
 
-    def compute_accuracy(self, threshold=0.865):
+    def compute_accuracy(self, threshold=0.86):
         wer_list = [data['wer'] for data in self.res_list]
         model_eval_list = [data['model_eval'] for data in self.res_list]
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
         return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
 
-    def compute_correlation(self, threshold=0.865):
+    def compute_correlation(self, threshold=0.86):
         model_eval_list = [data['model_eval'] for data in self.res_list]
         human_eval_list = [data['human_eval'] for data in self.res_list]
 

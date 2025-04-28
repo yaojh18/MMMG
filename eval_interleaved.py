@@ -287,6 +287,7 @@ class ITCoherence(EvalUnit):
     idx = 0
     label_list: tuple
     default_eval = 0.0
+    allow_multi_images = False
 
     def evaluate(self):
         text_pattern = r'<image_start><image_\d+><image_end>'
@@ -294,9 +295,14 @@ class ITCoherence(EvalUnit):
         self.idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
             texts = re.split(text_pattern, data['response'])
-            if len(texts) != 2 or len(data['image_list']) != 1:
-                data['model_eval'] = FAILED_TOKEN
-                continue
+            if self.allow_multi_images:
+                if len(texts) < 2 or len(data['image_list']) < 1:
+                    data['model_eval'] = FAILED_TOKEN
+                    continue
+            else:
+                if len(texts) != 2 or len(data['image_list']) != 1:
+                    data['model_eval'] = FAILED_TOKEN
+                    continue
             # texts = [t.strip() for t in texts if t.strip() != '']
             # if len(texts) != 1:
             #     data['model_eval'] = FAILED_TOKEN
@@ -628,6 +634,7 @@ class ITCoherenceOCR(ITCoherence, IOCR):
 
 class ITCoherenceMath(ITCoherenceColor):
     inst_name = 'it_coherence_math'
+    allow_multi_images = True
 
     def evaluate(self):
         self.load_inst_mm()
@@ -643,7 +650,7 @@ class ITCoherenceMath(ITCoherenceColor):
             data['text'] = text.group(1)
             queries.append(form_mm_query(LLM_AS_A_JUDGE_PROMPT.format(inst['pattern'], text.group(1))))
             self.idx += 2
-        queries.append(form_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list']))
+        queries.append(form_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list'][-1:]))
         data['pattern'] = inst['pattern']
 
     @staticmethod
@@ -654,14 +661,14 @@ class ITCoherenceMath(ITCoherenceColor):
     def human_process_data(self, data, human_inst_list, human_res_list):
         if 'text' in data:
             human_inst_list.append("(Ignore the given image.)\n" + LLM_AS_A_JUDGE_PROMPT.format(data['pattern'], data['text']))
-            human_res_list.append(data)
+            human_res_list.append({'image_list': data['image_list'][-1:]})
             data['human_eval'] = [self.idx, self.idx + 1]
             self.idx += 2
         else:
             data['human_eval'] = [0.0, self.idx]
             self.idx += 1
         human_inst_list.append(VLM_AS_A_JUDGE_PROMPT.format(data['pattern']))
-        human_res_list.append(data)
+        human_res_list.append({'image_list': data['image_list'][-1:]})
 
 
 class ITCoherenceCode(EvalUnit):
@@ -672,10 +679,10 @@ class ITCoherenceCode(EvalUnit):
         text_pattern = r'<image_start><image_\d+><image_end>'
         for data, inst in zip(self.res_list, self.inst_list):
             texts = re.split(text_pattern, data['response'])
-            if len(texts) != 2 or len(data['image_list']) != 1:
+            if len(texts) < 2 or len(data['image_list']) < 1:
                 data['auto_eval'] = 0.0
             else:
-                data['auto_eval'] = calculate_dreamsim(data['image_list'][0], inst['ref_image_list'][0])
+                data['auto_eval'] = calculate_dreamsim(data['image_list'][-1], inst['ref_image_list'][0])
         self.save()
 
     def compute_accuracy(self):
@@ -684,5 +691,4 @@ class ITCoherenceCode(EvalUnit):
 
 
 if __name__ == '__main__':
-    a = IConsistencyCompose(model_name='Emu3', sample_size=1)
-    # a.evaluate()
+    pass

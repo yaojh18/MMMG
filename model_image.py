@@ -1,5 +1,6 @@
 import requests
 import os
+import io
 
 from model import Model
 from utils import *
@@ -15,7 +16,7 @@ class Dalle3(Model):
     @staticmethod
     def generate_image(index, prompt, model_name):
         retry_count = 2
-        retry_interval = 2
+        retry_interval = 10
 
         if 'dall' in model_name:
             client = openai.OpenAI(api_key=OPENAI_KEY)
@@ -71,7 +72,7 @@ class Imagen3(Model):
     @staticmethod
     def generate_image_from_google(index, prompt, model_name):
         retry_count = 2
-        retry_interval = 2
+        retry_interval = 10
         client = genai.Client(api_key=GEMINI_KEY)
 
         for _ in range(retry_count):
@@ -170,7 +171,7 @@ class ReplicateModel(Model):
     def generate_image(index, query, model_name, image_size):
         import replicate
         retry_count = 2
-        retry_interval = 2
+        retry_interval = 10
         for _ in range(retry_count):
             try:
                 input_params = {
@@ -222,3 +223,53 @@ class Flux1_1Pro(ReplicateModel):
 class Ideogram2(ReplicateModel):
     model_name = "ideogram-ai/ideogram-v2"
     image_size = "1:1"
+
+
+class GPT4o(Model):
+    model_name = "gpt-image-1"
+
+    @staticmethod
+    def generate_image(index, prompt, model_name):
+        retry_count = 2
+        retry_interval = 10
+        client = openai.OpenAI(api_key=OPENAI_KEY)
+
+        for _ in range(retry_count):
+            try:
+                if len(prompt['image_list']) == 0:
+                    response = client.images.generate(
+                        model=model_name,
+                        prompt=prompt['instruction'],
+                        size="1024x1024",
+                        quality="medium"
+                    )
+                else:
+                    response = client.images.edit(
+                        model=model_name,
+                        image=[open(img, "rb") if isinstance(img, str) else img for img in prompt['image_list']],
+                        prompt=prompt['instruction'],
+                        size="1024x1024",
+                        quality="medium"
+                    )
+                image_bytes = base64.b64decode(response.data[0].b64_json)
+                return index, Image.open(io.BytesIO(image_bytes))
+            except Exception as e:
+                print("Error info: ", e)
+                print('Retrying....')
+                retry_interval *= 2
+                time.sleep(retry_interval)
+
+        print('Fail to get response.')
+        return index, None
+
+    def generate(self, query_list):
+        image_list = batch(self.generate_image, query_list, model_name=self.model_name)
+        res_list = []
+        for query, image in zip(query_list, image_list):
+            res_list.append({
+                'query': query,
+                'response': IMAGE_TOKEN(0) if image is not None else '',
+                'image_list': [image] if image is not None else [],
+                'audio_list': []
+            })
+        return res_list

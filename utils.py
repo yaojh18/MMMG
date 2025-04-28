@@ -6,7 +6,6 @@ import re
 import librosa
 import json
 import colorsys
-import parselmouth
 import numpy as np
 import soundfile as sf
 import pandas as pd
@@ -77,7 +76,6 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
 
 
 def form_mm_query(text, images=[], audios=[], model=''):
-    return form_qwen_mm_query(text, images, audios)
     model = model or VISION_MODEL
     if model == 'gemini':
         return form_gemini_mm_query(text, images, audios)
@@ -137,7 +135,6 @@ def form_qwen_mm_query(text, images=[], audios=[]):
 
 
 def query_vlm(query_list, model=''):
-    return batch_query_qwen(query_list, temperature=0.0)
     model = model or VISION_MODEL
     if model == 'gemini':
         return batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
@@ -299,6 +296,7 @@ def calculate_agreement(list1, list2):
         list2 += np.random.normal(0, 1e-8, list2.shape)
     return np.corrcoef(list1, list2)[0, 1]
 
+
 def color_condition(image: Image.Image, condition: str):
     img_array = np.array(image)
     avg_color = tuple(np.mean(img_array.reshape(-1, 3), axis=0).astype(int))
@@ -452,6 +450,7 @@ def transcribe_speech(audio_list, text_list=None, language='english'):
 
 
 def calculate_pitch(audio, gender=None, inst=''):
+    import parselmouth
     def extract_pitch(audio, hop_size=256, f0_min=80, f0_max=600, num_bins=100):
         pitch_obj = parselmouth.Sound(audio, SAMPLE_RATE).to_pitch(
             time_step=hop_size / SAMPLE_RATE,

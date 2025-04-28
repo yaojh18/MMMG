@@ -42,6 +42,7 @@ class MultiLabelInterface(Interface):
         super().__init__(**kwargs)
 
     def construct_interface(self):
+        import gradio as gr
         if self.shuffle:
             self.idx_list = random.sample(range(len(self.data_list)), len(self.data_list))
         else:
@@ -131,6 +132,7 @@ class MultiLabelInterface(Interface):
             return interface
 
     def update_interface(self, current_index, step, judgement):
+        import gradio as gr
         if self.multi_choice:
             self.eval_list[current_index] = [self.label_list.index(j) for j in judgement]
         else:
@@ -158,6 +160,7 @@ class FreeLabelInterface(Interface):
         super().__init__(**kwargs)
 
     def construct_interface(self):
+        import gradio as gr
         with gr.Blocks() as interface:
             current_index = gr.State(0)
             res_image = gr.Image(
@@ -193,6 +196,7 @@ class FreeLabelInterface(Interface):
             return interface
 
     def update_interface(self, current_index, step, judgement):
+        import gradio as gr
         self.eval_list[current_index] = judgement.strip()
         current_index += step
         if current_index == len(self.data_list):
@@ -291,6 +295,7 @@ class CalibratedLabelInterface(Interface):
         self.eval_list = [FAILED_TOKEN] * len(self.data_list)
 
     def construct_interface(self):
+        import gradio as gr
         with gr.Blocks() as interface:
             audios = []
             radios = []
@@ -317,57 +322,6 @@ class CalibratedLabelInterface(Interface):
         self.eval_list[i] = self.label_list.index(j)
 
     def submit(self):
+        import gradio as gr
         self.is_finished.set()
         return gr.update(visible=True)
-
-
-class StdOutDisplayer:
-    def __init__(self):
-        self.stdout_capture = None
-        self.original_stdout = sys.stdout
-
-    def capture_stdout(self):
-        self.interface = self.create_interface()
-        thread = threading.Thread(target=self.interface.launch, kwargs={'share': True})
-        thread.start()
-        time.sleep(10.0)
-        self.stdout_capture = io.StringIO()
-        sys.stdout = self.stdout_capture
-
-    def get_stdout(self):
-        if self.stdout_capture is None:
-            return None
-        return self.stdout_capture.getvalue()
-
-    def create_interface(self):
-        with gr.Blocks() as app:
-            output_text = gr.Textbox(
-                label="Annotation task URLs (note there might be more than one URL for one task.)",
-                interactive=False
-            )
-            def update_output():
-                while True:
-                    output = self.get_stdout()
-                    if output:
-                        marker = 'Human evaluation finished!\n'
-                        if marker in output:
-                            self.stdout_capture.seek(0)
-                            self.stdout_capture.truncate(0)
-                            start_pos = output.find(marker) + len(marker)
-                            self.stdout_capture.write(output[start_pos:])
-                            return output[start_pos:]
-                        return output
-                    time.sleep(1.0)
-            app.load(
-                fn=update_output,
-                inputs=[],
-                outputs=[output_text],
-                every=1.0
-            )
-        return app
-
-    def release_stdout(self):
-        if self.stdout_capture:
-            sys.stdout = self.original_stdout
-            self.stdout_capture = None
-            self.interface.close()
