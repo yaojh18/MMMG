@@ -147,10 +147,10 @@ def sample_from_star_vector():
             collected_data.append(data['Svg'])
     with open(f'./seed_instruction/it_coherence_code.jsonl', 'w', encoding='utf-8') as f:
         for i, data in enumerate(collected_data[:20]):
-            f.write(json.dumps({f'instruction': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser.\n", 'ref_image_list': [i], 'instruction_para': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser.\n"}) + '\n')
+            f.write(json.dumps({f'instruction': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser. \n", 'ref_image_list': [i], 'instruction_para': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser.\n"}) + '\n')
     for i, data in enumerate(collected_data[:20]):
         cairosvg.svg2png(bytestring=data, write_to=f'./seed_instruction/image/it_coherence_code_{i}.png', output_width=1024, output_height=1024)
 
 
 if __name__ == '__main__':
-    sample_from_star_vector()
+    pass

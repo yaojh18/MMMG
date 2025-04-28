@@ -440,6 +440,7 @@ class IOCR(EvalUnit):
         return normalized_text or FAILED_TOKEN
 
     def _compute_accuracy(self, label_list, model_eval_list, return_list=False):
+        import evaluate
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
                     for model_eval, label in zip(model_eval_list, label_list)]
@@ -448,6 +449,7 @@ class IOCR(EvalUnit):
         return wer_list
 
     def _compute_correlation(self, label_list, model_eval_list, human_eval_list):
+        import evaluate
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         human_wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
                     for human_eval, label in zip(human_eval_list, label_list)]

@@ -11,7 +11,7 @@ class EvalPipeline:
         assert cat in ['i', 'it', 'aso', 'asp', 'am']
         self.model_name = model_name
         self.cat = cat
-        self.sample_size = sample_size
+        self.sample_size = sample_size if self.model_name != 'GPT4o' else 1
         if cat == 'i':
             self.eval_list = ['i_object_include', 'i_object_exclude', 'i_object_count', 'i_object_cot',
                               'i_object_attribute', 'i_relation_two', 'i_relation_all', 'i_spacial_relative',
@@ -54,13 +54,11 @@ class EvalPipeline:
             if pd.isna(row['accuracy']):
                 task_name = row['task']
                 task = self.eval_map(task_name)
-                task.evaluate()
-                self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
-                self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+                # task.evaluate()
+                # self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+                # self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
 
     def human_evaluate(self):
-        # interface = StdOutDisplayer()
-        # interface.capture_stdout()
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(task_name)
@@ -70,7 +68,6 @@ class EvalPipeline:
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.loc[index, ['human_accuracy', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
-        # interface.release_stdout()
 
 
 class EvalBenchmark:
@@ -83,11 +80,11 @@ class EvalBenchmark:
         if 'i' in cat:
             base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3', 'StableDiffusion3_5']
             if 't' in cat:
-                base_model_list += ['Anole', 'Showo', 'Emu3', 'Janus', 'Gemini2', 'GPT4o']
+                base_model_list += ['Anole', 'Emu3', 'Gemini2', 'GPT4o']
         elif cat == 'aso':
             base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2']
         elif cat == 'asp':
-            base_model_list = ['VoxInstructAgent', 'VoiceLDMAgent']
+            base_model_list = ['VoxInstructAgent', 'VoiceLDMAgent', 'SpiritLM', 'BaichuanAudio']
         else:
             base_model_list = ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
         for model_name in base_model_list + model_list:
@@ -157,8 +154,8 @@ class EvalBenchmark:
 
     def compute_correlation(self):
         if self.cat == 'i':
-            golden_reference = {'Imagen3': 1093, 'Recraft3': 1014, 'LumaPhoton': 1025, 'Flux1_1Pro': 1002,
-                                'Ideogram2': 1024, 'Dalle3': 978, 'StableDiffusion3_5': 923}
+            golden_reference = {'Imagen3': 1091, 'Recraft3': 1012, 'LumaPhoton': 1023, 'Flux1_1Pro': 1001,
+                                'Ideogram2': 1022, 'Dalle3': 978, 'StableDiffusion3_5': 922}
             res = self.rank_models(method='absolute')
             print(calculate_pearson([golden_reference[m] for m in res['models'].to_list()], res['scores'].to_list()))
         else:
@@ -174,18 +171,18 @@ class EvalBenchmark:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='RandomModel_0', help='Name of the model.')
-    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
+    parser.add_argument('--model_name', type=str, default='Gemini2', help='Name of the model.')
+    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
     pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    pipeline.human_evaluate()
+    pipeline.evaluate()
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    # parser.add_argument('--category', type=str, default='aso', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
     # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    # benchmark.rank_models()
+    # benchmark.compute_correlation()

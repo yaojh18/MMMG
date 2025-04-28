@@ -5,42 +5,7 @@ from model import *
 from model_image import *
 from model_audio import *
 from utils import *
-from prompt import I_AGENT_PROMPT, A_AGENT_PROMPT
-
-
-### Image generation and editing model
-class OmniGen(Model):
-    def __init__(self):
-        super().__init__()
-        from OmniGen import OmniGenPipeline
-        self.batch_size = 16
-        self.sample_size = 4
-        self.pipe = OmniGenPipeline.from_pretrained("Shitao/OmniGen-v1")
-
-    def generate(self, query_list):
-        ### TODO: only image editing is implemented here
-        text_list = ['<img><|image_1|></img>' + query['instruction'] for query in query_list]
-        image_list = [query['image_list'] for query in query_list]
-        output_list = []
-        for begin in range(0, len(query_list), self.batch_size):
-            end = begin + self.batch_size if begin + self.batch_size < len(query_list) else len(query_list)
-            output_list += self.pipe(
-                prompt=text_list[begin: end],
-                input_images=image_list[begin: end],
-                height=512,
-                width=512,
-                seed=0,
-            )
-
-        res_list = []
-        for query, output in zip(query_list, output_list):
-            res_list.append({
-                'query': query,
-                'response': IMAGE_TOKEN(0),
-                'image_list': [output],
-                'audio_list': []
-            })
-        return res_list
+from prompt import *
 
 
 ### Agent models
@@ -163,12 +128,17 @@ class VoiceLDMAgent(AudioAgent):
 class ImageAgent(Model):
     mllm_name: str
     diffusion_name: str
+    enable_editing: bool = False
 
     def __init__(self):
+        if self.enable_editing:
+            self.system_prompt = I_AGENT_PROMPT
+        else:
+            self.system_prompt = I_AGENT_PROMPT
         if 'gpt' in self.mllm_name:
-            self.mllm = OpenAIModel(self.mllm_name, system_prompt=I_AGENT_PROMPT)
+            self.mllm = OpenAIModel(self.mllm_name, system_prompt=self.system_prompt)
         elif 'gemini' in self.mllm_name:
-            self.mllm = GeminiModel(self.mllm_name, system_prompt=I_AGENT_PROMPT)
+            self.mllm = GeminiModel(self.mllm_name, system_prompt=self.system_prompt)
         else:
             raise NotImplementedError
         self.diffusion = eval(f'{self.diffusion_name}()')
@@ -183,8 +153,19 @@ class ImageAgent(Model):
             image_prompts = re.findall(pattern, res)
             res = res.replace("</image_end>", "<image_end>")
             for i in range(len(image_prompts)):
-                diffusion_query_list.append({'instruction': image_prompts[i]})
-                res = res.replace(image_prompts[i], f"<image_{i}>")
+                if self.enable_editing:
+                    image_pattern = r'<[\s/]*image_prompt="(.*?)"[\s/]*><[\s/]*image_ref=(.*?)[\s/]*>'
+                    image_prompt = re.match(image_pattern, image_prompts[i])
+                    try:
+                        prompt, ref_list = image_prompt.group(1), eval(image_prompt.group(2))
+                    except:
+                        continue
+                if max(ref_list) < len(query['image_list'] and min(ref_list)) >= 0:
+                    diffusion_query_list.append({'instruction': image_prompts[i]})
+                    res = res.replace(image_prompts[i], f"<image_{i}>")
+                else:
+                    diffusion_query_list.append({'instruction': image_prompts[i]})
+                    res = res.replace(image_prompts[i], f"<image_{i}>")
             output_list.append({
                 'query': query,
                 'response': res,
@@ -198,10 +179,21 @@ class ImageAgent(Model):
         return output_list
 
 
+class GPTAgent(ImageAgent):
+    mllm_name = 'gpt-4o'
+    diffusion_name = 'Dalle3'
+
+
+class GeminiAgent(ImageAgent):
+    mllm_name = 'gemini-2.0-flash'
+    diffusion_name = 'Imagen3'
+
 ### Interleaved I+T model
 
-class Gemini(Model):
+
+class Gemini2(Model):
     model_name = 'gemini-2.0-flash-exp-image-generation'
+    system_prompt = IT_AGENT_PROMPT
 
     def __init__(self):
         super().__init__()
@@ -210,42 +202,54 @@ class Gemini(Model):
         client = genai.Client(api_key=GEMINI_KEY)
         res_list = []
 
-        for query in tqdm(query_list[0:1]):
-            try:
-                contents = []
-                text = query.get("instruction", "")
-                if text:
-                    contents.append(text)
+        for query in tqdm(query_list):
+            retry_count = 3
+            retry_interval = 10
+            flag = False
+            for _ in range(retry_count):
+                try:
+                    contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
+                    images = query.get("image_list", [])
+                    for img_path in images:
+                        contents.append(Image.open(img_path))
 
-                images = query.get("image_list", [])
-                for img_path in images:
-                    contents.append(Image.open(img_path))
-
-                response = client.models.generate_content(
-                    model=self.model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["Text", "Image"]
+                    response = client.models.generate_content(
+                        model=self.model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            response_modalities=["Text", "Image"],
+                            temperature=0.1,
+                            top_p=1.0
+                        ),
                     )
-                )
 
-                generated_text = ""
-                generated_images = []
-                for part in response.candidates[0].content.parts:
-                    if part.text is not None:
-                        generated_text += part.text
-                    if part.inline_data is not None:
-                        generated_images.append(Image.open(BytesIO(part.inline_data.data)))
+                    generated_text = ""
+                    generated_images = []
+                    image_count = 0
 
-                res_list.append({
-                    "query": query,
-                    "response": IMAGE_TOKEN(0) + generated_text,  # TODO: multiple image tokens handling
-                    "image_list": generated_images,
-                    "audio_list": [],
-                })
+                    for part in response.candidates[0].content.parts:
+                        if part.text is not None:
+                            generated_text += part.text
+                        if part.inline_data is not None:
+                            generated_images.append(Image.open(BytesIO(part.inline_data.data)))
+                            generated_text += IMAGE_TOKEN(image_count)
+                            image_count += 1
 
-            except Exception as e:
-                print(f"Error processing query: {query}. Error: {e}")
+                    res_list.append({
+                        "query": query,
+                        "response": generated_text,
+                        "image_list": generated_images,
+                        "audio_list": [],
+                    })
+                    flag = True
+                    break
+
+                except Exception as e:
+                    print(f"Error processing query: {query}. Error: {e}")
+                    time.sleep(retry_interval)
+                    retry_interval *= 2
+
+            if not flag:
                 res_list.append({
                     "query": query,
                     "response": '',
@@ -254,107 +258,6 @@ class Gemini(Model):
                 })
 
         return res_list
-
-
-class Anole(Model):
-    def __init__(self):
-        super().__init__()
-        from transformers import ChameleonForConditionalGeneration, ChameleonProcessor
-
-        self.model = ChameleonForConditionalGeneration.from_pretrained(
-            "leloy/Anole-7b-v0.1-hf",
-            torch_dtype=torch.bfloat16,
-            # attn_implementation="flash_attention_2",
-            device_map="auto",
-            trust_remote_code=True,
-            token=HF_KEY,
-        )
-        self.processor = ChameleonProcessor.from_pretrained(
-            "leloy/Anole-7b-v0.1-hf",
-            trust_remote_code=True,
-            token=HF_KEY,
-        )
-    
-    def generate(self, query_list):
-        import subprocess
-        
-        output_list = []
-        os.makedirs('./output/Anole/', exist_ok=True)
-
-        for idx, query in enumerate(tqdm(query_list)):
-            try:
-                instruction = query.get("instruction", "")
-                image_paths = query.get("image_list", [])
-                
-                path_prefix = './models/Anole/'
-                if not image_paths:  # Text-only generation
-                    script_path = path_prefix + "scripts/text_only_generation.py"
-                    command = [
-                        "python", script_path,
-                        "--prompt", instruction
-                    ]
-                elif len(image_paths) == 1:  # Text-image to text or text-image to image generation
-                    if query.get("inference_mode") == "text-image-to-text":
-                        script_path = path_prefix + "scripts/text_only_generation.py"
-                        command = [
-                            "python", script_path,
-                            "--inference_mode", "text-image-to-text",
-                            "--prompt", instruction,
-                            "--image_1_path", image_paths[0]
-                        ]
-                    else:  # text-image to image
-                        script_path = path_prefix + "scripts/image_only_generation.py"
-                        command = [
-                            "python", script_path,
-                            "--inference_mode", "text-image-to-image",
-                            "--prompt", instruction,
-                            "--image_1_path", image_paths[0],
-                            "--max_new_tokens", "2500"
-                        ]
-                elif len(image_paths) == 2:  # Multi-image to text or multi-image to image generation
-                    if query.get("inference_mode") == "multi-image-to-text":
-                        script_path = path_prefix + "scripts/text_only_generation.py"
-                        command = [
-                            "python", script_path,
-                            "--inference_mode", "multi-image-to-text",
-                            "--prompt", instruction,
-                            "--image_1_path", image_paths[0],
-                            "--image_2_path", image_paths[1]
-                        ]
-                else:  # Interleaved text and image generation
-                    script_path = path_prefix + "scripts/interleaved_generation.py"
-                    command = [
-                        "python", script_path,
-                        "--inference_mode", "text-to-interleaved-text-image",
-                        "--prompt", instruction,
-                        "--max_new_tokens", "2055"
-                    ]  
-                    
-                result = subprocess.run(command, capture_output=True, text=True)
-                if result.returncode != 0:
-                    raise RuntimeError(f"Script execution failed: {result.stderr}")
-
-                output = result.stdout.strip()
-                response = output.split("Response:")[1].strip() if "Response:" in output else ""
-                image_list = [Image.open(path) for path in image_paths] if image_paths else []
-
-                output_list.append({
-                    "query": query,
-                    "response": response,
-                    "image_list": image_list,
-                    "audio_list": [],
-                })
-
-            except Exception as e:
-                print(f"Error generating content for query: {query}. Error: {e}")
-                output_list.append({
-                    "query": query,
-                    "response": "",
-                    "image_list": [],
-                    "audio_list": [],
-                })
-                
-        return output_list
 
 
 class Emu3(Model):
@@ -369,71 +272,79 @@ class Emu3(Model):
         self.model = AutoModelForCausalLM.from_pretrained(
             EMU_HUB,
             torch_dtype=torch.bfloat16,
-            device_map="cuda:0",
+            device_map="auto",
             attn_implementation="flash_attention_2",
             trust_remote_code=True,
             token=HF_KEY,
         ).eval()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(EMU_HUB, trust_remote_code=True, padding_side="left",token=HF_KEY)
-        self.image_processor = AutoImageProcessor.from_pretrained(VQ_HUB, trust_remote_code=True,token=HF_KEY)
-        self.image_tokenizer = AutoModel.from_pretrained(VQ_HUB, device_map="cuda:0", trust_remote_code=True, token=HF_KEY).eval()
+        self.tokenizer = AutoTokenizer.from_pretrained(EMU_HUB, trust_remote_code=True, padding_side="left", token=HF_KEY)
+        self.image_processor = AutoImageProcessor.from_pretrained(VQ_HUB, trust_remote_code=True, token=HF_KEY)
+        self.image_tokenizer = AutoModel.from_pretrained(VQ_HUB, device_map="cuda", trust_remote_code=True, token=HF_KEY).eval()
         self.processor = Emu3Processor(self.image_processor, self.image_tokenizer, self.tokenizer)
+        self.system_prompt = IT_AGENT_PROMPT
 
     def generate(self, query_list):
-        from transformers.generation import LogitsProcessorList, PrefixConstrainedLogitsProcessor
+        from transformers.generation import LogitsProcessorList, PrefixConstrainedLogitsProcessor, UnbatchedClassifierFreeGuidanceLogitsProcessor
         from transformers.generation.configuration_utils import GenerationConfig
 
         res_list = []
-        for query in tqdm(query_list[0:1]):
+        for query in tqdm(query_list):
             try:
                 instruction = query.get("instruction", "")
                 images = query.get("image_list", [])
 
                 inputs = self.processor(
-                    text=instruction,
+                    text=f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + instruction,
                     images=images,
-                    mode="G",  # Image gen mode by default
+                    mode="G",
                     ratio="1:1",
                     image_area=self.model.config.image_area,
                     return_tensors="pt",
                     padding="longest",
                 )
-                inputs.input_ids = inputs.input_ids.to("cuda:0")
-                inputs.attention_mask = inputs.attention_mask.to("cuda:0")
-                
+
                 h = inputs.image_size[:, 0]
                 w = inputs.image_size[:, 1]
                 constrained_fn = self.processor.build_prefix_constrained_fn(h, w)
-                
+
                 logits_processor = LogitsProcessorList([
-                    PrefixConstrainedLogitsProcessor(constrained_fn, num_beams=1),
+                    UnbatchedClassifierFreeGuidanceLogitsProcessor(
+                        3.0,
+                        self.model,
+                    ),
+                    PrefixConstrainedLogitsProcessor(
+                        constrained_fn,
+                        num_beams=1,
+                    ),
                 ])
                 
                 generation_config = GenerationConfig(
-                    use_cache=False,
+                    use_cache=True,
                     eos_token_id=self.model.config.eos_token_id,
                     pad_token_id=self.model.config.pad_token_id,
                     max_new_tokens=40960,
                     do_sample=True,
-                    top_k=2048,
+                    temperature=0.1,
+                    top_p=1.0
                 )
                 
                 outputs = self.model.generate(
-                    inputs.input_ids.to("cuda:0"),
+                    inputs.input_ids.to("cuda"),
                     generation_config=generation_config,
                     logits_processor=logits_processor,
-                    attention_mask=inputs.attention_mask.to("cuda:0"),
+                    attention_mask=inputs.attention_mask.to("cuda"),
                 )
                 
                 decoded_outputs = self.processor.decode(outputs[0])
                 
                 parts, image_list = [], []
+                image_count = 0
                 for item in decoded_outputs:
                     if isinstance(item, Image.Image):
-                        token = IMAGE_TOKEN(len(image_list))  
+                        token = IMAGE_TOKEN(image_count)
                         parts.append(token)
                         image_list.append(item)
+                        image_count += 1
                     else:
                         parts.append(str(item))
 
@@ -458,37 +369,334 @@ class Emu3(Model):
         return res_list
 
 
-class SpiritLM(Model):
+class SeedLlama(Model):
+    def __init__(self):
+        import hydra
+        import pyrootutils
+        from omegaconf import OmegaConf
+
+        pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
+        self.device = "cuda"
+
+        tokenizer_cfg = OmegaConf.load('./models/SEED/configs/tokenizer/seed_llama_tokenizer_hf.yaml')
+        self.tokenizer = hydra.utils.instantiate(tokenizer_cfg, device=self.device, load_diffusion=True)
+        
+        from torchvision import transforms
+
+        def get_transform(type='clip', keep_ratio=True, image_size=224):
+            if type == 'clip':
+                transform = []
+                if keep_ratio:
+                    transform.extend([
+                        transforms.Resize(image_size),
+                        transforms.CenterCrop(image_size),
+                    ])
+                else:
+                    transform.append(transforms.Resize((image_size, image_size)))
+                transform.extend([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711))
+                ])
+
+                return transforms.Compose(transform)
+            else:
+                raise NotImplementedError
+
+        self.transform = get_transform
+        
+        model_cfg = OmegaConf.load('./models/SEED/configs/llm/seed_llama_14b.yaml')
+        self.model = hydra.utils.instantiate(model_cfg, torch_dtype=torch.float16)
+        self.model = self.model.eval().to(self.device)
+
+        self.generation_config = {
+            'temperature': 0.0,
+            'num_beams': 1,
+            'max_new_tokens': 1024,
+            'top_p': 0.0,
+            'do_sample': False
+        }
+
+    def encode_images(self, images):
+        BOI_TOKEN = '<img>'
+        EOI_TOKEN = '</img>'
+        IMG_TOKEN = '<img_{:05d}>'
+        
+        img_tokens = ""
+        for image in images:
+            image_tensor = self.transform(image.convert("RGB")).to(self.device)
+            img_ids = self.tokenizer.encode_image(image_torch=image_tensor)
+            img_ids = img_ids.view(-1).cpu().numpy()
+            img_tokens += BOI_TOKEN + ''.join([IMG_TOKEN.format(i) for i in img_ids]) + EOI_TOKEN
+        return img_tokens
+
+    def decode_output(self, generate_ids):
+        BOI_TOKEN = '<img>'
+        EOI_TOKEN = '</img>'
+        IMG_TOKEN = '<img_{:05d}>'
+        image_id_shift = 32000
+        
+        boi_token_id = self.tokenizer(BOI_TOKEN, add_special_tokens=False).input_ids[0]
+        eoi_token_id = self.tokenizer(EOI_TOKEN, add_special_tokens=False).input_ids[0]
+
+        boi_list = torch.where(generate_ids == boi_token_id)[0]
+        eoi_list = torch.where(generate_ids == eoi_token_id)[0]
+
+        text = ""
+        images = []
+        image_counter = 0 
+
+        cur = 0
+        for boi, eoi in zip(boi_list, eoi_list):
+            # decode text before <img>
+            text_segment = generate_ids[cur:boi]
+            if len(text_segment) > 0:
+                text += self.tokenizer.decode(text_segment, skip_special_tokens=True)
+
+            # IMAGE_TOKEN(i)
+            text += f'<image_start><image_{image_counter}><image_end>'
+            image_counter += 1
+
+            # decode image
+            image_ids = (generate_ids[boi + 1:eoi] - image_id_shift).reshape(1, -1)
+            images.extend(self.tokenizer.decode_image(image_ids))
+
+            cur = eoi + 1
+
+        # decode the rest text
+        if cur < len(generate_ids):
+            text += self.tokenizer.decode(generate_ids[cur:], skip_special_tokens=True)
+
+        return text.strip(), images
+
+
+    def generate(self, query_list):
+        res_list = []
+
+        for query in tqdm(query_list):
+            try:
+                instruction = query.get("instruction", "")
+                image_list = query.get("image_list", [])
+
+                image_tokens = self.encode_images(image_list) if image_list else ""
+                input_text = self.tokenizer.bos_token + "[INST] " + image_tokens + instruction + " [/INST]\n"
+
+                input_ids = self.tokenizer(input_text, add_special_tokens=False, return_tensors='pt').input_ids.to(self.device)
+
+                generate_ids = self.model.generate(
+                    input_ids=input_ids,
+                    **self.generation_config
+                )
+                generate_ids = generate_ids[0][input_ids.shape[1]:]
+
+                response_text, response_images = self.decode_output(generate_ids)
+
+                res_list.append({
+                    "query": query,
+                    "response": response_text,
+                    "image_list": response_images,
+                    "audio_list": [],
+                })
+
+            except Exception as e:
+                print(f"[Error] Query failed: {query}, Error: {e}")
+                res_list.append({
+                    "query": query,
+                    "response": '',
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return res_list
+    
+class SpiritLM(Model): # FIXME: multi-turn logic should be fixed
     def __init__(self):
         super().__init__()
         from models.spiritlm.spiritlm.model.spiritlm_model import Spiritlm
 
         self.model = Spiritlm("spirit-lm-expressive-7b")
 
+        with open('./prompts/a_multi_turn.txt', 'r') as f:
+            self.multi_turn_prompt = f.read().strip()
+
     def generate(self, query_list):
+        from models.spiritlm.spiritlm.model.spiritlm_model import OutputModality, GenerationInput, ContentType
+        from transformers import GenerationConfig
+
+        output_list = []
+        for query in tqdm(query_list):
+            try:
+                instruction = query.get("instruction", "")
+                audios = query.get("audio_list", [])
+
+                interleaved_inputs = [GenerationInput(content=self.multi_turn_prompt + "\n" + instruction, content_type=ContentType.TEXT)]
+                if audios:
+                    for audio in audios:
+                        interleaved_inputs.append(
+                            GenerationInput(content=audio, content_type=ContentType.SPEECH)
+                        )
+
+                response = ""
+                image_list = []
+                audio_list = []
+
+                max_turns = 10
+
+                for turn in range(max_turns):
+                    outputs = self.model.generate(
+                        output_modality=OutputModality.ARBITRARY,
+                        interleaved_inputs=interleaved_inputs,
+                        generation_config=GenerationConfig(
+                            temperature=0,
+                            top_p=0,
+                            max_new_tokens=2048,
+                        ),
+                    )
+
+                    turn_response = ""
+                    for output in outputs:
+                        if output.content_type == ContentType.TEXT:
+                            turn_response += output.content.strip()
+                        elif output.content_type == ContentType.SPEECH:
+                            audio_list.append(output.content)
+
+                    if turn_response.strip() == "<stop/>":
+                        break
+
+                    response += ("\n" if response else "") + turn_response.strip()
+
+                    interleaved_inputs.append(GenerationInput(content="Please continue.", content_type=ContentType.TEXT))
+
+                output_list.append({
+                    "query": query,
+                    "response": response.strip(),
+                    "image_list": image_list,
+                    "audio_list": audio_list,
+                })
+            except Exception as e:
+                print(f"Error generating content for query: {query}. Error: {e}")
+                output_list.append({
+                    "query": query,
+                    "response": "",
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return output_list
+
+
+class QwenOmni(Model):    
+    def __init__(self):        
+        super().__init__()
+        from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
+
+        self.device = "cuda" 
+        self.model = Qwen2_5OmniForConditionalGeneration.from_pretrained(
+            "Qwen/Qwen2.5-Omni-7B",
+            torch_dtype="auto",
+            device_map="auto",
+            # attn_implementation="flash_attention_2", 
+        )
+
+        self.processor = Qwen2_5OmniProcessor.from_pretrained("Qwen/Qwen2.5-Omni-7B")
+
+    def generate(self, query_list):
+        from qwen_omni_utils import process_mm_info
+
         res_list = []
         for query in tqdm(query_list):
-            instruction = query.get("instruction", "")
-            audios = query.get("audio_list", [])
-            
-            outputs = spirit_lm.generate(
-                output_modality=OutputModality.ARBITRARY,
-                interleaved_inputs=[
-                    GenerationInput(
-                        content=instruction,
-                        content_type=ContentType.TEXT,
-                    ),
-                    GenerationInput(
-                        content=audios,
-                        content_type=ContentType.SPEECH,
-                    )
-                ],
-                generation_config=GenerationConfig(
-                    temperature=0.9,
-                    top_p=0.95,
-                    max_new_tokens=512,
-                    do_sample=True,
-                ),
-            )
+            try:
+                instruction = query.get("instruction", "")
+                audio_list = query.get("audio_list", [])
+
+                conversation = [
+                    {
+                        "role": "system",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable of perceiving auditory and visual inputs, as well as generating text and speech."
+                            }
+                        ],
+                    },
+                    {
+                        "role": "user",
+                        "content": []
+                    }
+                ]
+
+                if instruction.strip():
+                    conversation[1]["content"].append({"type": "text", "text": instruction})
+
+                for audio_path in audio_list:
+                    conversation[1]["content"].append({"type": "audio", "audio": audio_path})
+
+                text_prompt = self.processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=False)
+                audios, images, videos = process_mm_info(conversation, use_audio_in_video=False)
+
+                inputs = self.processor(
+                    text=text_prompt,
+                    audio=audios,
+                    images=images,
+                    videos=videos,
+                    return_tensors="pt",
+                    padding=True,
+                    use_audio_in_video=False,
+                )
+                inputs = inputs.to(self.model.device).to(self.model.dtype)
+
+                text_ids, output_audio = self.model.generate(**inputs, use_audio_in_video=False)
+
+                response_text = self.processor.batch_decode(
+                    text_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                )[0]
+
+                audio_output_list = []
+                if output_audio is not None:
+                    audio_np = output_audio.reshape(-1).detach().cpu().numpy()
+                    audio_output_list.append(audio_np)
+
+                res_list.append({
+                    "query": query,
+                    "response": response_text.strip(),
+                    "image_list": [],
+                    "audio_list": audio_output_list,  # numpy array, can be stored as .wav file directly
+                })
+
+            except Exception as e:
+                print(f"[Error] Query failed: {query}, Error: {e}")
+                res_list.append({
+                    "query": query,
+                    "response": '',
+                    "image_list": [],
+                    "audio_list": [],
+                })
+
+        return res_list
 
 
+class Anole(Model):
+     # TODO: Anole doesn't seem to support interleaved input, fix this
+     def generate(self, query_list):
+         os.makedirs('./models/Anole/input/', exist_ok=True)
+         with open('./models/Anole/input/prompt.txt', 'w', encoding='utf-8') as f:
+             f.writelines([query['instruction'] + '\n' for query in query_list])
+         os.chdir("./models/Anole")
+         if os.path.exists('./output'):
+             shutil.rmtree('./output')
+             print('History output has been removed!')
+         os.system(f"python interleaved_generation.py")
+         os.chdir("../..")
+         output_list = []
+         for idx, query in enumerate(query_list):
+             dir_path = f'./models/Anole/output/{idx}/'
+             with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
+                 text = ''.join(f.readlines())
+             image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
+             output_list.append({
+                 'query': query,
+                 'response': text,
+                 'image_list': image_list,
+                 'audio_list': [],
+             })
+         return output_list

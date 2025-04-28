@@ -40,10 +40,9 @@ class BlankAudioModel(Model):
 
 
 class RandomModel(Model):
-    def __init__(self, sample_size=4, annotation_sample_size=2):
-        assert annotation_sample_size >= 2
+    def __init__(self, sample_size=2):
+        assert sample_size >= 2
         self.sample_size = sample_size
-        self.annotation_sample_size = annotation_sample_size
 
     @staticmethod
     def inst_map(inst_name):
@@ -70,11 +69,12 @@ class RandomModel(Model):
                       for model_name in model_name_list]
         output_list = []
         random.seed(0)
-        for i in range(len(model_list[0].res_list) // self.sample_size):
-            model_idxs = random.sample(range(len(model_list)), self.annotation_sample_size)
+
+        for i in range(len(model_list[0].res_list) // model_list[0].sample_size):
+            model_idxs = random.sample(range(len(model_list)), self.sample_size)
             for idx in model_idxs:
-                gen_idx = random.randint(0, self.sample_size - 1)
-                output_list.append(model_list[idx].res_list[i * self.sample_size + gen_idx])
+                gen_idx = random.randint(0, model_list[idx].sample_size - 1)
+                output_list.append(model_list[idx].res_list[i * model_list[idx].sample_size + gen_idx])
         return output_list
 
 
