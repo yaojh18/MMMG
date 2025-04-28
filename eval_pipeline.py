@@ -160,14 +160,14 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='GPT4oAgent', help='Name of the model.')
-    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    args = parser.parse_args()
-
-    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    pipeline.evaluate()
+    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    # parser.add_argument('--model_name', type=str, default='GPT4oAgent', help='Name of the model.')
+    # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    # args = parser.parse_args()
+    #
+    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    # pipeline.evaluate()
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')

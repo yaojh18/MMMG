@@ -21,7 +21,6 @@ from typing import Callable
 from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
-from sklearn.metrics import cohen_kappa_score
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 
 OPENAI_KEY = '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'
@@ -261,14 +260,6 @@ def calculate_dreamsim(img1, img2):
     img1 = preprocess(img1).to(device)
     img2 = preprocess(img2).to(device)
     return 1.0 - float(dreamsim_model(img1, img2))
-
-
-def calculate_kappa(list1, list2):
-    list1 = np.array(list1)
-    list2 = np.array(list2)
-    if all(list1 == list2):
-        return 1.0
-    return cohen_kappa_score(list1, list2)
 
 
 def calculate_pearson(list1, list2):
