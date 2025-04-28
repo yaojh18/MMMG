@@ -307,10 +307,10 @@ class MultiTurnAgent(Model):
             if his is None:
                 break
             elif isinstance(his, str):
-                query['instruction'] += his + '\n<|im_end|>\n<|im_start|>user\nplease continue\n<|im_end|>\n<|im_start|>assistant\n'
+                query['instruction'] += his + '\n<|im_end|>\n<|im_start|>assistant\n'
             else:
                 query['instruction'] += ((IMAGE_TOKEN(mm_cnt) if self.modality == 'image' else AUDIO_TOKEN(mm_cnt))
-                                         + '\n<|im_end|>\n<|im_start|>user\nplease continue\n<|im_end|>\n<|im_start|>assistant\n')
+                                         + '\n<|im_end|>\n<|im_start|>assistant\n')
                 if self.modality == 'image':
                     his.save(f'./temp/ImageAgent/{index}_{mm_cnt}.png')
                     query['image_list'].append(f'./temp/ImageAgent/{index}_{mm_cnt}.png')
@@ -326,6 +326,7 @@ class MultiTurnAgent(Model):
                 .replace('<|im_start|>', '').replace('<|im_end|>', '').replace('please continue', '').replace('<|file_separator|>', '').strip())
 
     def generate(self, query_list):
+        query_list = query_list[12: 15]
         turn_query_list = [self.apply_chat_template(0, query, []) for query in query_list]
         res_idx_list = [i for i in range(len(query_list))]
         res_list = [[] for i in range(len(query_list))]
