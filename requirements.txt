@@ -9,5 +9,4 @@ gradio
 evaluate
 scipy
 dreamsim
-praat-parselmouth
 nltk

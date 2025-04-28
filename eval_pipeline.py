@@ -169,10 +169,10 @@ if __name__ == '__main__':
     # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
     # pipeline.evaluate()
 
-    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    # args = parser.parse_args()
-    #
-    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    # benchmark.compute_correlation()
+    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
+    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    args = parser.parse_args()
+
+    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    benchmark.compute_correlation()
