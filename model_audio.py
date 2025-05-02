@@ -119,54 +119,34 @@ class MusicGen(Model):
 
 class YuE(Model):
     def __init__(self):
-<<<<<<< HEAD
-
-        from model import GeminiModel        
-        system_prompt="""Rephrase the given sentence to match the style of the example provided. 
-        
-        Input 1: Create a guitar solo that conveys strong emotion and expression.        
-        Output 1: emotional expressive solo guitar
-        
-        Input 2: Create a majestic and grand classical flute composition with a tempo of 145 BPM.        
-        Output 2: majestic classical flute 145BPM
-        
-        Input:"""
-        self.genre_corrector=GeminiModel('gemini-2.0-flash', system_prompt)
-=======
         os.chdir("./models/YuE/inference")
         with open("lyrics.txt", "w") as f:
             f.write("[verse]\n\n[chorus]\n\n[outro]")
->>>>>>> 5def335df8a83bf1012ddc34ac550f1373b504a4
             
     def generate(self, query_list):
-        
-        import string
-        
-        ## convert instructino to YuE compatible format
-        query_list = self.genre_corrector.generate(query_list)
-        query_list = [q.replace('### Assistant:', '').strip().lower().translate(str.maketrans('', '', string.punctuation)) for q in query_list]
-        output_list = []
+        output_list = []        
+        query_list = [query['instruction'] for query in query_list]
         
         for query in tqdm(query_list):
-            with open("models/YuE/prompt_egs/genre.txt", "w") as f:
+            with open("query.txt", "w") as f:
                 f.write(query)
-            command = f"""python models/YuE/inference/infer.py --cuda_idx 2 \
-                                                               --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
-                                                               --stage2_model m-a-p/YuE-s2-1B-general \
-                                                               --genre_txt models/YuE/prompt_egs/genre.txt \
-                                                               --lyrics_txt models/YuE/prompt_egs/lyrics.txt \
-                                                               --run_n_segments 2 \
-                                                               --stage2_batch_size 4 \
-                                                               --output_dir models/YuE/output/ \
-                                                               --max_new_tokens 500 \
-                                                               --repetition_penalty 1.1"""
+            command = f"""python infer.py --cuda_idx 0 \
+                                        --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
+                                        --stage2_model m-a-p/YuE-s2-1B-general \
+                                        --genre_txt query.txt \
+                                        --lyrics_txt lyrics.txt \
+                                        --run_n_segments 2 \
+                                        --stage2_batch_size 4 \
+                                        --output_dir output/ \
+                                        --max_new_tokens 500 \
+                                        --repetition_penalty 1.1"""
             os.system(command)
 
             ## process output
-            file = [item for item in os.listdir("models/YuE/output/") if item.endswith('.mp3')][0]            
-            output_list.append(librosa.load(f"models/YuE/output/{file}")[0])
-            shutil.rmtree("models/YuE/output/")
-            os.makedirs("models/YuE/output/")
+            file = [item for item in os.listdir("output/") if '-'.join(query.split()) in item][0]            
+            output_list.append(librosa.load(f"output/{file}")[0])
+            shutil.rmtree("output/")
+            os.makedirs("output/")
             
         res_list = []
         for query, output in zip(query_list, output_list):
