@@ -385,7 +385,8 @@ class IOCR(EvalUnit):
             if len(data['image_list']) != 1:
                 data['model_eval'] = FAILED_TOKEN
                 continue
-            queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list'], model=self.vlm))
+            queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']) if 'object' in inst else I_OCR_EDIT_PROMPT,
+                                         images=data['image_list'], model=self.vlm))
             data['model_eval'] = idx
             idx += 1
         responses = query_vlm(queries, model=self.vlm)
@@ -402,7 +403,7 @@ class IOCR(EvalUnit):
             if len(data['image_list']) != 1:
                 data['human_eval'] = FAILED_TOKEN
                 continue
-            human_inst_list.append(f"Please type the major texts (ignore small texts on the edge) on {inst['object']} "
+            human_inst_list.append(f"Please type the major texts (ignore small texts on the edge) on {inst['object'] if 'object' in inst else 'the given image'} "
                                    f"from top to down, from left to right in the given image. Leave empty if the there "
                                    f"is no valid Latin character in the given image. Ignore small texts in the corner.")
             human_res_list.append(data)
@@ -674,9 +675,23 @@ class IFormatBackground(EvalUnit):
         'upper quarter': (0.0, 0.0, 1.0, 0.25),
         'lower quarter': (0.0, 0.75, 1.0, 1.0),
     }
+    complement_map = {
+        'left half': (0.5, 0.0, 1.0, 1.0),
+        'right half': (0.0, 0.0, 0.5, 1.0),
+        'upper half': (0.0, 0.5, 1.0, 1.0),
+        'lower half': (0.0, 0.0, 1.0, 0.5),
+        'left third': (0.33, 0.0, 0.67, 1.0),
+        'right third': (0.33, 0.0, 0.67, 1.0),
+        'upper third': (0.0, 0.33, 1.0, 0.67),
+        'lower third': (0.0, 0.33, 1.0, 0.67),
+        'left quarter': (0.25, 0.0, 0.5, 1.0),
+        'right quarter': (0.5, 0.0, 0.75, 1.0),
+        'upper quarter': (0.0, 0.25, 1.0, 0.5),
+        'lower quarter': (0.0, 0.5, 1.0, 0.75),
+    }
 
     def evaluate(self):
-        for data, inst in zip(self.res_list, self.inst_list):
+        for idx, (data, inst) in enumerate(zip(self.res_list, self.inst_list)):
             if len(data['image_list']) != 1:
                 data['auto_eval'] = 0.0
                 continue
@@ -689,7 +704,18 @@ class IFormatBackground(EvalUnit):
                 round(crop_area[3] * height)
             )
             cropped_image = data['image_list'][0].crop(crop_area)
-            data['auto_eval'] = color_condition(cropped_image, inst['color'])
+            data['auto_eval'], avg_color = color_condition(cropped_image, inst['color'])
+
+            crop_area = self.complement_map[inst['region']]
+            crop_area = (
+                round(crop_area[0] * width),
+                round(crop_area[1] * height),
+                round(crop_area[2] * width),
+                round(crop_area[3] * height)
+            )
+            complement_image = data['image_list'][0].crop(crop_area)
+            penalty = count_pixels(complement_image, avg_color)
+            data['auto_eval'] = max(0.0, data['auto_eval'] - penalty)
         self.save()
 
     def compute_accuracy(self):
@@ -712,38 +738,48 @@ class IFormatSymmetric(IFormatBackground):
 class IFormatBorder(IFormatBackground):
     inst_name = 'i_format_border'
 
+    @staticmethod
+    def get_border(image):
+        width, height = image.size
+        min_width = min(width, height)
+        border_width = round(width * 0.1)
+        border_height = round(height * 0.1)
+        top_border = image.crop(((width - min_width) // 2, 0, (width + min_width) // 2, border_height))
+        bottom_border = image.crop(((width - min_width) // 2, height - border_height, (width + min_width) // 2, height))
+        left_border = image.crop((0, (height - min_width) // 2, border_width, (height + min_width) // 2))
+        right_border = image.crop((width - border_width, (height - min_width) // 2, width, (height + min_width) // 2))
+        left_border = left_border.rotate(90, expand=True)
+        right_border = right_border.rotate(90, expand=True)
+        total_height = top_border.height + bottom_border.height + left_border.height + right_border.height
+        new_image = Image.new('RGB', (min_width, total_height), (255, 255, 255))
+        y_offset = 0
+        new_image.paste(top_border, (0, y_offset))
+        y_offset += top_border.height
+        new_image.paste(left_border, (0, y_offset))
+        y_offset += left_border.height
+        new_image.paste(right_border, (0, y_offset))
+        y_offset += right_border.height
+        new_image.paste(bottom_border, (0, y_offset))
+        return new_image
+
     def evaluate(self):
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['image_list']) != 1:
                 data['auto_eval'] = 0.0
                 continue
+            border = self.get_border(data['image_list'][0])
+            data['auto_eval'], avg_color = color_condition(border, inst['color'])
+
             width, height = data['image_list'][0].size
-            border_width = round(width * 0.1)
-            border_height = round(height * 0.1)
-
-            top_border = data['image_list'][0].crop((0, 0, width, border_height))
-            bottom_border = data['image_list'][0].crop((0, height - border_height, width, height))
-            left_border = data['image_list'][0].crop((0, 0, border_width, height))
-            right_border = data['image_list'][0].crop((width - border_width, 0, width, height))
-
-            left_border = left_border.rotate(90, expand=True)
-            right_border = right_border.rotate(90, expand=True)
-            max_width = max(top_border.width, bottom_border.width, left_border.width, right_border.width)
-            total_height = top_border.height + bottom_border.height + left_border.height + right_border.height
-            new_image = Image.new('RGB', (max_width, total_height), (255, 255, 255))
-            y_offset = 0
-            x_offset = (max_width - top_border.width) // 2
-            new_image.paste(top_border, (x_offset, y_offset))
-            y_offset += top_border.height
-            x_offset = (max_width - left_border.width) // 2
-            new_image.paste(left_border, (x_offset, y_offset))
-            y_offset += left_border.height
-            x_offset = (max_width - right_border.width) // 2
-            new_image.paste(right_border, (x_offset, y_offset))
-            y_offset += right_border.height
-            x_offset = (max_width - bottom_border.width) // 2
-            new_image.paste(bottom_border, (x_offset, y_offset))
-            data['auto_eval'] = color_condition(new_image, inst['color'])
+            complement_image = data['image_list'][0].crop((
+                round(0.1 * width),
+                round(0.1 * height),
+                round(0.9 * width),
+                round(0.9 * height)
+            ))
+            border = self.get_border(complement_image)
+            penalty = count_pixels(border, avg_color)
+            data['auto_eval'] = max(0.0, data['auto_eval'] - penalty)
         self.save()
 
 
@@ -775,17 +811,34 @@ class IEdit(EvalUnit):
         self.save()
         super().evaluate()
 
+    def human_evaluate(self):
+        self.load_inst_mm()
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['image_list']) != 1:
+                continue
+            origin_image = inst['image_list'][0].convert('RGB')
+            image = data['image_list'][0].resize(origin_image.size)
+            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            bbox = (max(inst['bbox'][0] - width_margin, 0),
+                    max(inst['bbox'][1] - height_margin, 0),
+                    min(inst['bbox'][2] + width_margin, origin_image.size[0]),
+                    min(inst['bbox'][3] + height_margin, origin_image.size[1])
+                    )
+            data['image_list'][0] = image.crop(bbox)
+        super().human_evaluate()
+
     def compute_accuracy(self):
         model_eval_list = super().compute_accuracy(return_list=True)
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
         return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
 
     def compute_correlation(self):
-        super().compute_correlation()
+        return super().compute_correlation()
 
 
 class IEditText(IEdit, IOCR):
     inst_name = 'i_edit_text'
+    vlm = 'gemini'
 
 
 class IEditObjectAdd(IEdit, IObjectInclude):
@@ -794,6 +847,7 @@ class IEditObjectAdd(IEdit, IObjectInclude):
 
 class IEditObjectRemove(IEdit, IObjectExclude):
     inst_name = 'i_edit_object_remove'
+    vlm = 'gemini'
 
 
 class IEditObjectModify(IEdit, IObjectInclude):
@@ -807,7 +861,7 @@ class IEditAdd(EvalUnit):
         self.load_inst_mm()
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['image_list']) != 1:
-                data['auto_eval'] = 0.0
+                data['auto_eval'] = [0.0, 0.0]
                 continue
             origin_image = inst['ref_image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
@@ -829,9 +883,6 @@ class IEditAdd(EvalUnit):
     def compute_accuracy(self):
         auto_eval_list = [res['auto_eval'][0] * res['auto_eval'][1] for res in self.res_list]
         return np.mean(auto_eval_list)
-
-    def compute_correlation(self):
-        return None, None
 
 
 class IEditColor(IEditAdd):

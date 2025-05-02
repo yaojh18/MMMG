@@ -285,6 +285,11 @@ class GPT4oAgent(ImageAllAgent):
     diffusion_name = 'GPT4o'
 
 
+class HybridAgent(ImageAllAgent):
+    mllm_name = 'gemini-2.0-flash'
+    diffusion_name = 'GPT4o'
+
+
 class MultiTurnAgent(Model):
     modality = 'image' or 'audio'
     model_name: str
@@ -393,6 +398,11 @@ class MultiTurnAgent(Model):
 ### Interleaved I+T model
 
 
+class TestMultiTurn(MultiTurnAgent):
+    modality = 'image'
+    model_name = 'Anole'
+
+
 class Gemini2(Model):
     model_name = 'gemini-2.0-flash-exp-image-generation'
     system_prompt = IT_AGENT_PROMPT
@@ -410,8 +420,7 @@ class Gemini2(Model):
             flag = False
             for _ in range(retry_count):
                 try:
-                    # contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
-                    contents = [query['instruction']]
+                    contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
                     images = query.get("image_list", [])
                     for img_path in images:
                         contents.append(Image.open(img_path))

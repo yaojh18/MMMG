@@ -25,7 +25,7 @@ class EvalUnit:
             if len(self.inst_list) == len(self.res_list):
                 return
         if model_name.startswith('RandomModel_'):
-            model = eval(f'{model_name.split("_")[0]}(annotation_sample_size={self.sample_size})')
+            model = eval(f'{model_name.split("_")[0]}(sample_size={self.sample_size})')
             self.res_list = model.generate(self.inst_name)
         else:
             model = eval(f'{model_name}()')

@@ -8,10 +8,10 @@ import textwrap
 def plot_model_radar(cat='i'):
     if cat == 'i':
         df = pd.read_csv('./figures/i_eval.csv')
-        selected_models = ['Imagen 3', 'Luma Photon', 'Ideogram 2', 'Dalle 3', 'SD 3.5']
+        selected_models = ['GPT-4o', 'Imagen 3', 'Luma Photon', 'Dalle 3', 'SD 3.5']
     elif cat == 'a':
         df = pd.read_csv('./figures/a_eval.csv')
-        selected_models = ['Stable Audio', 'AudioLDM 2', 'Make-An-Audio 2', 'Tango 2', 'MusicGen']
+        selected_models = ['Stable Audio', 'AudioLDM 2', 'Make-An-Audio 2 (audio only)', 'MusicGen (music only)']
     else:
         raise NotImplementedError
     categories = df['task'].tolist()
@@ -28,7 +28,7 @@ def plot_model_radar(cat='i'):
     ax = fig.add_subplot(111, polar=True)
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
-    ax.set_rlim(0, 1.15)
+    ax.set_rlim(0, 1.2)
 
     radii = [0.2, 0.4, 0.6, 0.8, 1.0]
     ax.set_rgrids(radii, labels=[''] * len(radii), color='gray', alpha=0.8)
@@ -48,11 +48,11 @@ def plot_model_radar(cat='i'):
         ax.plot(angles, values, linewidth=2.5, label=model, color=colors[idx])
         ax.fill(angles, values, color=colors[idx], alpha=0.2)
 
-    plt.legend(loc='lower right', bbox_to_anchor=(1.4, -0.1), fontsize=18, frameon=True,
+    plt.legend(loc='lower right', bbox_to_anchor=(1.45, -0.1), fontsize=18, frameon=True,
                facecolor='white', framealpha=0.8, edgecolor='lightgray')
     plt.tight_layout()
     plt.show()
 
 
 if __name__ == '__main__':
-    plot_model_radar('a')
+    plot_model_radar('i')

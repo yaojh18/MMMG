@@ -307,12 +307,22 @@ def color_condition(image: Image.Image, condition: str):
     color_hsv = colorsys.rgb_to_hsv(*color)
     if condition == "white" or condition == "black":
         if abs(avg_color_hsv[2] - color_hsv[2]) > 38:
-            return 0.0
+            return 0.0, avg_color
     else:
         if 0.15 < abs(avg_color_hsv[0] - color_hsv[0]) < 0.85:
-            return 0.0
+            return 0.0, avg_color
     ref_image = Image.new("RGB", image.size, avg_color)
-    return calculate_ssim(image, ref_image)
+    return calculate_ssim(image, ref_image), avg_color
+
+
+def count_pixels(image, reference_color, max_distance=4):
+    image = np.array(image)
+    ref_color = np.array(reference_color)
+    max_distance_squared = max_distance ** 2
+    pixels = image.reshape(-1, image.shape[-1])
+    squared_distances = np.sqrt(np.sum((pixels - ref_color) ** 2, axis=1))
+    count = np.sum(squared_distances <= max_distance_squared)
+    return count / (image.shape[0] * image.shape[1])
 
 
 def symmetry_condition(image: Image.Image, condition: str):
@@ -562,7 +572,7 @@ def text_instruction_following_verify(text_list, instruction_list):
 
 
 def extract_json(text):
-    match = re.search(r'\{.*}', text, re.DOTALL)
+    match = re.search(r'\{.*?}', text, re.DOTALL)
     if match:
         json_str = match.group(0)
         try:
@@ -577,7 +587,7 @@ def extract_json(text):
 
 
 def extract_list(text):
-    match = re.search(r'\[.*]?', text)
+    match = re.search(r'\[.*?]', text)
     if match:
         try:
             return json.loads(match.group(0))

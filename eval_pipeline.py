@@ -11,19 +11,19 @@ class EvalPipeline:
         assert cat in ['i', 'it', 'aso', 'asp', 'am']
         self.model_name = model_name
         self.cat = cat
-        self.sample_size = sample_size if self.model_name != 'GPT4o' else 1
+        self.sample_size = sample_size
         if cat == 'i':
             self.eval_list = ['i_object_include', 'i_object_exclude', 'i_object_count', 'i_object_cot',
                               'i_object_attribute', 'i_relation_two', 'i_relation_all', 'i_spacial_relative',
                               'i_spacial_absolute', 'i_format_background', 'i_format_border', 'i_ocr',
                               'i_ocr_two', 'i_ocr_multi_lingual']
         if cat == 'it':
-            self.eval_list = ['i_consistency_semantic', 'i_consistency_3d_object','i_consistency_3d_scene',
-                               'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
-                               'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove','i_edit_object_modify',
-                               'it_coherence_count', 'it_coherence_color', 'it_coherence_size', 'it_coherence_ocr',
-                               'it_coherence_spacial_relative', 'it_coherence_spacial_absolute',
-                               'it_coherence_math', 'it_coherence_code', 'i_structure']
+            self.eval_list = ['i_consistency_semantic', 'i_consistency_3d_object', 'i_consistency_3d_scene',
+                              'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
+                              'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove', 'i_edit_object_modify',
+                              'it_coherence_count', 'it_coherence_color', 'it_coherence_size', 'it_coherence_ocr',
+                              'it_coherence_spacial_relative', 'it_coherence_spacial_absolute',
+                              'it_coherence_math', 'it_coherence_code', 'i_structure']
         elif cat == 'aso':
             self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence']
         elif cat == 'asp':
@@ -77,10 +77,11 @@ class EvalBenchmark:
         self.sample_size = sample_size
         self.pipelines = {}
 
-        if 'i' in cat:
-            base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3', 'StableDiffusion3_5']
-            if 't' in cat:
-                base_model_list += ['SeedLlama', 'Anole', 'GPT4oAgent', 'GeminiAgent', 'Gemini2']
+        if cat == 'i':
+            base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3',
+                               'StableDiffusion3_5', 'GPT4o']
+        elif cat == 'it':
+            base_model_list = ['Gemini2', 'GeminiAgent', 'HybridAgent']
         elif cat == 'aso':
             base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2']
         elif cat == 'asp':
@@ -107,7 +108,7 @@ class EvalBenchmark:
         combined_df.to_csv(f'./output/{self.cat}_eval.csv', index=False)
         if method == 'absolute':
             scores = np.array(combined_df[model_names])
-            scores = np.average(scores, axis=0)
+            scores = np.mean(scores, axis=0)
             results['scores'] = scores
             results['rank'] = self.rank_with_ties(scores)
         elif method == 'relative':
@@ -135,7 +136,6 @@ class EvalBenchmark:
         results.to_csv(f'./output/{self.cat}_avg.csv', index=False)
         return results
 
-
     @staticmethod
     def rank_with_ties(values, ascending=False):
         s = pd.Series(values)
@@ -161,18 +161,18 @@ class EvalBenchmark:
 
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    # parser.add_argument('--model_name', type=str, default='GPT4oAgent', help='Name of the model.')
+    # parser.add_argument('--model_name', type=str, default='RandomModel_0', help='Name of the model.')
     # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    # parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
     # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
     # pipeline.evaluate()
 
     parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
     benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.compute_correlation()
+    benchmark.human_evaluate()

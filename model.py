@@ -47,9 +47,9 @@ class RandomModel(Model):
     @staticmethod
     def inst_map(inst_name):
         if inst_name.startswith('i_consistency') or inst_name.startswith('i_structure') or inst_name.startswith('it'):
-            return ['GPT4oAgent', 'GeminiAgent', 'Gemini2']
+            return ['HybridAgent', 'GeminiAgent', 'Gemini2']
         if inst_name.startswith('i_edit'):
-            return ['GPT4oAgent', 'Gemini2']
+            return ['HybridAgent', 'Gemini2']
         if inst_name.startswith('i'):
             return ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3']
         if inst_name.startswith('a_sound'):
@@ -66,7 +66,7 @@ class RandomModel(Model):
         for model_name in model_name_list:
             if not os.path.exists(f'./output/{model_name}/{inst_name}.jsonl'):
                 raise FileNotFoundError(f'./output/{model_name}/{inst_name}.jsonl')
-        model_list = [EvalUnit(model_name=model_name, inst_name=inst_name, sample_size=self.sample_size)
+        model_list = [EvalUnit(model_name=model_name, inst_name=inst_name, sample_size=4)
                       for model_name in model_name_list]
         output_list = []
         random.seed(0)

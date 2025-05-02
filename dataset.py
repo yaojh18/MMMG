@@ -43,13 +43,13 @@ def sample_from_emu_edit():
 
 
 def label_image_editing_instruction():
-    for task in ('i_edit_add', 'i_edit_color'):
+    for task in ('i_edit_object_add', ):
         dataset = []
         with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
         for data in dataset:
-            data['image'] = f'./seed_instruction/image/{task}_{data["ref_image_list"][0]}.png'
+            data['image'] = f'./seed_instruction/image/{task}_{data["image_list"][0]}.png'
         interface = LabelBBoxInterface(data_list=dataset)
         interface.start()
         output_list = []
@@ -65,13 +65,13 @@ def label_image_editing_instruction():
 
 
 def validate_image_editing_instruction():
-    for task in ('i_edit_add', 'i_edit_color'):
+    for task in ('i_edit_object_add', ):
         dataset = []
         with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 dataset.append(json.loads(line.strip()))
         for data in dataset:
-            image = Image.open(f'./seed_instruction/image/{task}_{data["ref_image_list"][0]}.png')
+            image = Image.open(f'./seed_instruction/image/{task}_{data["image_list"][0]}.png')
             draw = ImageDraw.Draw(image)
             draw.rectangle(data['bbox'], outline="red", width=3)
             plt.imshow(image)

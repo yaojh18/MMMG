@@ -3,7 +3,7 @@ import itertools
 from eval import EvalUnit
 from prompt import *
 from interface import *
-from eval_image import IOCR
+from eval_image import IOCR, IEditColor, IEditObjectRemove, IEditText, IEditObjectAdd, IEditObjectModify
 
 
 class IConsistencySemantic(EvalUnit):
@@ -61,9 +61,11 @@ class IConsistencySemantic(EvalUnit):
         return model_eval_list
 
     def compute_correlation(self):
-        human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        human_eval_list = [res['human_eval'] for res in self.res_list]
+        model_eval_list = [res['model_eval'] for res in self.res_list]
+        human_eval_cat = list(itertools.chain(*human_eval_list))
+        model_eval_cat = list(itertools.chain(*model_eval_list))
+        return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
 
 
 class IConsistencyCompose(IConsistencySemantic):
@@ -83,7 +85,7 @@ class IConsistency3DObject(EvalUnit):
             if len(data['image_list']) != len(inst['ref_image_list']):
                 data['auto_eval'] = [0.0] * len(inst['ref_image_list'])
             else:
-                data['auto_eval'] = [calculate_dreamsim(img1, img2) for img1, img2 in zip(data['image_list'], inst['ref_image_list'])]
+                data['auto_eval'] = [calculate_ssim(img1, img2) for img1, img2 in zip(data['image_list'], inst['ref_image_list'])]
         self.save()
 
     def compute_accuracy(self):
@@ -196,8 +198,9 @@ class AConsistencyConversation(EvalUnit):
         # threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
 
         model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
-        human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        human_eval_cat = list(itertools.chain(*human_eval_list))
+        model_eval_cat = list(itertools.chain(*model_eval_list))
+        return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
 
 
 class AConsistencyVariant(EvalUnit):
@@ -288,6 +291,7 @@ class ITCoherence(EvalUnit):
     label_list: tuple
     default_eval = 0.0
     allow_multi_images = False
+    vlm = 'openai'
 
     def evaluate(self):
         text_pattern = r'<image_start><image_\d+><image_end>'
@@ -309,7 +313,7 @@ class ITCoherence(EvalUnit):
             #     continue
             # self.model_process_data(data, inst, texts[0], queries)
             self.model_process_data(data, inst, ''.join(texts), queries)
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN:
                 self.model_process_response(data, responses)
@@ -355,9 +359,11 @@ class ITCoherence(EvalUnit):
         return np.mean(model_eval_list)
 
     def compute_correlation(self):
-        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
-        human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        model_eval_list = [res['model_eval'] if isinstance(res['model_eval'], list) else [res['model_eval']] for res in self.res_list]
+        human_eval_list = [res['human_eval'] if isinstance(res['human_eval'], list) else [res['human_eval']] for res in self.res_list]
+        human_eval_cat = list(itertools.chain(*human_eval_list))
+        model_eval_cat = list(itertools.chain(*model_eval_list))
+        return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
 
 
 class ITCoherenceCount(ITCoherence):
@@ -365,13 +371,13 @@ class ITCoherenceCount(ITCoherence):
     inst_name = 'it_coherence_count'
 
     def model_process_data(self, data, inst, res, queries):
-        res = re.search(inst['format'], res)
-        if res is None or not (2 < int(res.group(2)) < 7):
+        res = re.search(r'<count>(\d)+</count>', res)
+        if res is None or not (2 < int(res.group(1)) < 7):
             data['model_eval'] = FAILED_TOKEN
             return
-        obj, cnt = res.group(1), int(res.group(2))
-        queries.append(form_mm_query(I_OBJECT_COUNT_PROMPT(obj), images=data['image_list']))
-        data['object'], data['count'], data['model_eval'] = obj, cnt, self.idx
+        cnt = int(res.group(1))
+        queries.append(form_mm_query(I_OBJECT_COUNT_PROMPT(inst['object']), images=data['image_list'], model=self.vlm))
+        data['object'], data['count'], data['model_eval'] = inst['object'], cnt, self.idx
         self.idx += 1
 
     @staticmethod
@@ -396,6 +402,7 @@ class ITCoherenceColor(ITCoherence):
     label_list = ('Yes', 'No')
     inst_name = 'it_coherence_color'
     default_eval = [0.0, 0.0, 0.0]
+    exclude_list = ['microwave', 'ball', 'TV', 'globe', 'toothbrush', 'knife', 'tennis racket', 'camera']
 
     def model_process_data(self, data, inst, res, queries):
         obj2col = extract_json(res)
@@ -403,8 +410,11 @@ class ITCoherenceColor(ITCoherence):
             data['model_eval'] = FAILED_TOKEN
             return
         queries += [form_mm_query(
-            I_OBJECT_EXIST_COT_PROMPT(f'exactly one {obj} and the color of {obj} being mostly {col}'),
-            images=data['image_list'],
+            I_OBJECT_EXIST_COT_PROMPT(
+                f'exactly one {obj} and the color of {obj} being majorly {col} and no other major color'
+                if obj not in self.exclude_list else f'exactly one {obj} and the color of {obj} being majorly {col}'
+            ),
+            images=data['image_list'], model=self.vlm
         ) for obj, col in obj2col.items()]
         data['obj2col'], data['model_eval'] = obj2col, [self.idx, self.idx + 1, self.idx + 2]
         self.idx += 3
@@ -438,9 +448,9 @@ class ITCoherenceSize(ITCoherenceColor):
             return
         rel_map = {'size': 'larger', 'area': 'larger', 'volume': 'bigger', 'length': 'longer', 'height': 'higher'}
         queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(
-                f"exactly one {obj_list[i]}, exactly one {obj_list[j]} and the "
-                f"{obj_list[j]} being obviously {rel_map[inst['relation']]} than the {obj_list[i]}"),
-            images=data['image_list']) for i in range(3) for j in range(i + 1, 3)]
+            f"exactly one {obj_list[i]}, exactly one {obj_list[j]} and the {obj_list[j]} being obviously "
+            f"{rel_map[inst['relation']]} than the {obj_list[i]}") + inst['text'] if 'text' in inst else '',
+            images=data['image_list'], model=self.vlm) for i in range(3) for j in range(i + 1, 3)]
         data['object'], data['relation'] = obj_list, rel_map[inst['relation']]
         data['model_eval'] = [self.idx, self.idx + 1, self.idx + 2]
         self.idx += 3
@@ -460,6 +470,7 @@ class ITCoherenceSize(ITCoherenceColor):
 class ITCoherenceSpacialRelative(ITCoherenceColor):
     inst_name = 'it_coherence_spacial_relative'
     default_eval = [0.0, 0.0]
+    vlm = 'gemini'
 
     def evaluate(self):
         super().evaluate()
@@ -476,7 +487,7 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
                     data['object'][1][0], data['object'][1][1]), images=data['image_list']))
                 data['model_eval'][1] = self.idx
                 self.idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             if isinstance(data['model_eval'][0], int):
                 opt = re.search('nswer: ([ABC])', responses[data['model_eval'][0]])
@@ -492,7 +503,6 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
                     data['model_eval'][1] = 0.0
         self.save()
 
-
     def model_process_data(self, data, inst, res, queries):
         opt_list = extract_list(res)
         opt_list = [obt.strip().lower() for obt in opt_list]
@@ -500,7 +510,7 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
             data['model_eval'] = FAILED_TOKEN
             return
         queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj1} and exactly one {obj2}"),
-            images=data['image_list']) for obj1, obj2 in inst['object']]
+                                  images=data['image_list'], model=self.vlm) for obj1, obj2 in inst['object']]
         data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
                                               [a + [ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
         self.idx += 2
@@ -509,7 +519,7 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
         if 'object' not in data:
             data['human_eval'] = FAILED_TOKEN
             return
-        lr_map = ['to the left of', 'to the right of', 'to the top of', 'neither to the obviously left nor right of']
+        lr_map = ['to the left of', 'to the right of', 'neither to the obviously left nor right of']
         human_inst_list.append(f"Is/Are there exactly one {data['object'][0][0]}, exactly one {data['object'][0][1]} "
                                f"and the {data['object'][0][0]} is {lr_map[data['object'][0][2]]} "
                                f"the {data['object'][0][1]} in the given image?\n")
@@ -534,7 +544,7 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
             for i in range(2):
                 if data['model_eval'][i] == 1.0:
                     queries.append(form_mm_query(I_SPACIAL_ABSOLUTE_PROMPT(data['object'][i][0]),
-                                                        images=data['image_list']))
+                                                 images=data['image_list'], model=self.vlm))
                     data['model_eval'][i] = self.idx
                     self.idx += 1
         responses = query_vlm(queries)
@@ -548,7 +558,6 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
                         data['model_eval'][i] = 0.0
         self.save()
 
-
     def model_process_data(self, data, inst, res, queries):
         opt_list = extract_list(res)
         opt_list = [obt.strip().lower() for obt in opt_list]
@@ -556,7 +565,7 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
             data['model_eval'] = FAILED_TOKEN
             return
         queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(f"exactly one {obj}"),
-                                         images=data['image_list']) for obj in inst['object']]
+                                  images=data['image_list'], model=self.vlm) for obj in inst['object']]
         data['model_eval'], data['object'] = ([self.idx, self.idx + 1],
                                               [[a, ord(b) - 97] for a, b in zip(inst['object'], opt_list)])
         self.idx += 2
@@ -578,12 +587,12 @@ class ITCoherenceOCR(ITCoherence, IOCR):
     default_eval = ''
 
     def model_process_data(self, data, inst, res, queries):
-        res = re.search(inst['format'], res)
-        if res is None or not (1 < len(res.group(1).split(' ')) < 11):
+        res = re.search(r'<text>(.*?)</text>', res)
+        if res is None or not (5 <= len(res.group(1).split(' ')) <= 10):
             data['model_eval'] = FAILED_TOKEN
             return
         text = res.group(1)
-        queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list']))
+        queries.append(form_mm_query(I_OCR_ENGLISH_PROMPT(inst['object']), images=data['image_list'], model=self.vlm))
         data['text'], data['model_eval'] = text, self.idx
         self.idx += 1
 
@@ -609,7 +618,7 @@ class ITCoherenceOCR(ITCoherence, IOCR):
                 data['human_eval'] = self.idx
                 self.idx += 1
             else:
-                data['human_eval'] = FAILED_TOKEN
+                data['human_eval'] = ''
         interface = FreeLabelInterface(
             eval_inst_list=human_inst_list,
             data_list=human_res_list
@@ -648,9 +657,9 @@ class ITCoherenceMath(ITCoherenceColor):
         else:
             data['model_eval'] = [self.idx, self.idx + 1]
             data['text'] = text.group(1)
-            queries.append(form_mm_query(LLM_AS_A_JUDGE_PROMPT.format(inst['pattern'], text.group(1))))
+            queries.append(form_mm_query(LLM_AS_A_JUDGE_PROMPT.format(inst['pattern'], text.group(1)), model=self.vlm))
             self.idx += 2
-        queries.append(form_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list'][-1:]))
+        queries.append(form_mm_query(VLM_AS_A_JUDGE_PROMPT.format(inst['pattern']), images=data['image_list'][-1:], model=self.vlm))
         data['pattern'] = inst['pattern']
 
     @staticmethod

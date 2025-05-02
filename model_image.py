@@ -236,7 +236,7 @@ class GPT4o(Model):
 
         for _ in range(retry_count):
             try:
-                if len(prompt['image_list']) == 0:
+                if 'image_list' not in prompt or len(prompt['image_list']) == 0:
                     response = client.images.generate(
                         model=model_name,
                         prompt=prompt['instruction'],
