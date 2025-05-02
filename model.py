@@ -1,14 +1,14 @@
 import os
-import re
 import shutil
+import random
 from abc import abstractmethod
+
+import numpy as np
 
 from utils import *
 
 
 class Model:
-    model_name: str
-
     @abstractmethod
     def generate(self, query_list):
         """
@@ -24,20 +24,60 @@ class Model:
         pass
 
 
-class BlankModel(Model):
+### Tool models
+
+class BlankAudioModel(Model):
     def generate(self, query_list):
-        res_list = []
-        for query in enumerate(query_list):
-            res_list.append({
+        output_list = []
+        for query in query_list:
+            output_list.append({
                 'query': query,
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
-                'audio_list': [np.random.randn(1000*SAMPLE_RATE)],
+                'audio_list': [np.zeros(SAMPLE_RATE)],
             })
-        return res_list
+        return output_list
 
 
-### Tool models
+class RandomModel(Model):
+    def __init__(self, sample_size=2):
+        assert sample_size >= 2
+        self.sample_size = sample_size
+
+    @staticmethod
+    def inst_map(inst_name):
+        if inst_name.startswith('i_consistency') or inst_name.startswith('i_structure') or inst_name.startswith('it'):
+            return ['HybridAgent', 'GeminiAgent', 'Gemini2']
+        if inst_name.startswith('i_edit'):
+            return ['HybridAgent', 'Gemini2']
+        if inst_name.startswith('i'):
+            return ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3']
+        if inst_name.startswith('a_sound'):
+            return ['StableAudio', 'AudioLDM2', 'AudioGen', 'Tango2', 'MakeAnAudio2']
+        if inst_name.startswith('a_music'):
+            return ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
+        if inst_name.startswith('a_speech'):
+            return ['VoxInstructAgent', 'VoiceLDMAgent']
+        raise NotImplementedError(inst_name)
+
+    def generate(self, inst_name):
+        from eval import EvalUnit
+        model_name_list = self.inst_map(inst_name)
+        for model_name in model_name_list:
+            if not os.path.exists(f'./output/{model_name}/{inst_name}.jsonl'):
+                raise FileNotFoundError(f'./output/{model_name}/{inst_name}.jsonl')
+        model_list = [EvalUnit(model_name=model_name, inst_name=inst_name, sample_size=4)
+                      for model_name in model_name_list]
+        output_list = []
+        random.seed(0)
+
+        for i in range(len(model_list[0].res_list) // model_list[0].sample_size):
+            model_idxs = random.sample(range(len(model_list)), self.sample_size)
+            for idx in model_idxs:
+                gen_idx = random.randint(0, model_list[idx].sample_size - 1)
+                output_list.append(model_list[idx].res_list[i * model_list[idx].sample_size + gen_idx])
+        return output_list
+
 
 class VoxInstruct(Model):
     def generate(self, query_list):
@@ -62,9 +102,7 @@ class VoxInstruct(Model):
         os.chdir("../..")
         res_list = []
         for idx, query in enumerate(query_list):
-            audio, sr = librosa.load(f'./models/VoxInstruct/output/{idx}.wav')
-            if sr != SAMPLE_RATE:
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
+            audio, sr = librosa.load(f'./models/VoxInstruct/output/{idx}.wav', sr=SAMPLE_RATE)
             res_list.append({
                 'query': query,
                 'response': AUDIO_TOKEN(0),
@@ -124,6 +162,7 @@ class VoiceLDM(Model):
             })
         return res_list
 
+
 class OpenAIModel(Model):
     def __init__(self, model_name, system_prompt=''):
         self.model_name = model_name
@@ -133,11 +172,10 @@ class OpenAIModel(Model):
         """
         This model will not return a formated output list, thus can only be used for intermediate results.
         """
-        mllm_query_list = [self.system_prompt + form_openai_mm_query(
-            query['instruction'] + (IMAGE_TOKEN(0) if 'image_list' in query else ''),
+        mllm_query_list = [self.system_prompt + form_openai_mm_query(query['instruction'],
             images=[Image.open(image) for image in query['image_list']] if 'image_list' in query else []
         ) for query in query_list]
-        return batch(query_openai, mllm_query_list, model=self.model_name, temperature=0.2)
+        return batch(query_openai, mllm_query_list, model=self.model_name, temperature=0.0)
 
 
 class GeminiModel(Model):

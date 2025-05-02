@@ -4,15 +4,14 @@ import base64
 import collections
 import re
 import librosa
-import evaluate
 import json
 import colorsys
 import numpy as np
 import soundfile as sf
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
+from nltk.tokenize import word_tokenize
 from google import genai
 from google.genai import types
 from tqdm import tqdm
@@ -22,20 +21,18 @@ from typing import Callable
 from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
-from sklearn.metrics import cohen_kappa_score
-from transformers import  AutoProcessor, ClapModel, AutoModelForSpeechSeq2Seq, Wav2Vec2FeatureExtractor, WavLMForXVector
-
+from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
 
 OPENAI_KEY = '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'
 GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
 REPLICATE_KEY = 'r8_UK8hAuFDdTWdUVsHNtHAov6TaBDo8Vw1zph3t'
 RECRAFT_KEY = 'brbYCYRV7RNpIfTEneG3QA1Bll7vb55W8fnf03sT42jy2JdyikKW8ysIR02zGWz3'
-# HF_KEY = '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' # yjh
-HF_KEY = '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' # yyj
+HF_KEY = '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'
 IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
 AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'
 SAMPLE_RATE = 22050
+VISION_MODEL = 'openai'
 
 idx2letter = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
@@ -77,31 +74,36 @@ def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False)
     return buffer.getvalue()
 
 
+def form_mm_query(text, images=[], audios=[], model=''):
+    model = model or VISION_MODEL
+    if model == 'gemini':
+        return form_gemini_mm_query(text, images, audios)
+    elif model == 'openai':
+        return form_openai_mm_query(text, images, audios)
+    elif model == 'qwen':
+        return form_qwen_mm_query(text, images, audios)
+    else:
+        raise NotImplementedError('Vision model not implemented.')
+
+
 def form_openai_mm_query(text, images=[], audios=[]):
-    texts = re.split(r'<(?:image|audio)_start><(?:image|audio)_\d+><(?:image|audio)_end>', text)
-    modalities = re.findall(r'<((?:image|audio)_\d+)>', text)
     message = []
-    for t, mm in zip(texts[:-1], modalities):
-        if t != '':
-            message.append({"type": "text", "text": t})
-        mm_name, mm_idx = mm.split('_')
-        if mm_name == 'image':
-            message.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/png;base64,{encode_image(images[int(mm_idx)])}"
-                }
-            })
-        else:
-            message.append({
-                "type": "input_audio",
-                "input_audio": {
-                    "data": encode_audio(audios[int(mm_idx)]),
-                    "format": "wav",
-                }
-            })
-    if texts[-1] != '':
-        message.append({"type": "text", "text": texts[-1]})
+    for image in images:
+        message.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{encode_image(image)}"
+            }
+        })
+    for audio in audios:
+        message.append({
+            "type": "input_audio",
+            "input_audio": {
+                "data": encode_audio(audio),
+                "format": "wav",
+            }
+        })
+    message.append({"type": "text", "text": text})
     return [{
         'role': 'user',
         'content': message
@@ -111,11 +113,36 @@ def form_openai_mm_query(text, images=[], audios=[]):
 def form_gemini_mm_query(text, images=[], audios=[]):
     message = [text] + images
     for audio in audios:
-        message.append({
-            "mime_type": "audio/wav",
-            "data": encode_audio(audio, decode=False)
-        })
+        message.append(types.Part.from_bytes(
+            data=encode_audio(audio, decode=False),
+            mime_type='audio/wav',
+        ))
     return message
+
+
+def form_qwen_mm_query(text, images=[], audios=[]):
+    """
+    Qwen2.5 doesn't support audio input for now. So we just dismiss audios.
+    """
+    message = [{"type": "text", "text": text}]
+    for image in images:
+        message.append({"type": "image", "image": f"data:image/png;base64,{encode_image(image)}"})
+    return [{
+        'role': 'user',
+        'content': message
+    }]
+
+
+def query_vlm(query_list, model=''):
+    model = model or VISION_MODEL
+    if model == 'gemini':
+        return batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
+    elif model == 'openai':
+        return batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
+    elif model == 'qwen':
+        return batch_query_qwen(query_list, temperature=0.0)
+    else:
+        raise NotImplementedError('Vision model not implemented.')
 
 
 def query_openai(index, prompt, model, temperature):
@@ -146,7 +173,7 @@ def query_openai(index, prompt, model, temperature):
 def query_gemini(index, query, model, temperature):
     client = genai.Client(api_key=GEMINI_KEY)
     retry_count = 10
-    retry_interval = 1
+    retry_interval = 10
 
     for _ in range(retry_count):
         try:
@@ -169,6 +196,45 @@ def query_gemini(index, query, model, temperature):
     return index, ''
 
 
+def batch_query_qwen(query_list, temperature):
+    from transformers import Qwen2_5_VLForConditionalGeneration
+    from qwen_vl_utils import process_vision_info
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
+    )
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+    output_list = []
+    generation_kwargs = {'max_new_tokens': 256}
+    if temperature == 0.0:
+        generation_kwargs['do_sample'] = False
+    else:
+        generation_kwargs['temperature'] = temperature
+        generation_kwargs['top_p'] = 1.0
+        generation_kwargs['do_sample'] = True
+
+    for query in tqdm(query_list):
+        text = processor.apply_chat_template(
+            query, tokenize=False, add_generation_prompt=True, use_fast=True
+        )
+        image_inputs, video_inputs = process_vision_info(query)
+        inputs = processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        )
+        inputs = inputs.to("cuda")
+        generated_ids = model.generate(**inputs, **generation_kwargs)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_list.append(processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )[0])
+    return output_list
+
+
 def calculate_ssim(img1, img2):
     if img1.size != img2.size:
         img1 = img1.resize(img2.size, Image.LANCZOS)
@@ -179,6 +245,7 @@ def calculate_ssim(img1, img2):
 
 dreamsim_model = None
 def calculate_dreamsim(img1, img2):
+    from dreamsim import dreamsim
     def preprocess(img):
         img = img.convert('RGB')
         return transforms.Compose([
@@ -189,19 +256,10 @@ def calculate_dreamsim(img1, img2):
     global dreamsim_model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if dreamsim_model is None:
-        from dreamsim import dreamsim
         dreamsim_model, _ = dreamsim(pretrained=True, device=device, cache_dir="./libs/DreamSim")
     img1 = preprocess(img1).to(device)
     img2 = preprocess(img2).to(device)
     return 1.0 - float(dreamsim_model(img1, img2))
-
-
-def calculate_kappa(list1, list2):
-    list1 = np.array(list1)
-    list2 = np.array(list2)
-    if all(list1 == list2):
-        return 1.0
-    return cohen_kappa_score(list1, list2)
 
 
 def calculate_pearson(list1, list2):
@@ -217,7 +275,17 @@ def calculate_pearson(list1, list2):
 
 
 def calculate_agreement(list1, list2):
-    return (np.array(list1) == np.array(list2)).sum() / len(list1)
+    # print(np.arange(len(list1))[np.array(list1) != np.array(list2)])
+    # return (np.array(list1) == np.array(list2)).sum() / len(list1)
+    list1 = np.array(list1)
+    list2 = np.array(list2)
+    if all(list1 == list2):
+        return 1.0
+    if np.std(list1) == 0:
+        list1 += np.random.normal(0, 1e-8, list1.shape)
+    if np.std(list2) == 0:
+        list2 += np.random.normal(0, 1e-8, list2.shape)
+    return np.corrcoef(list1, list2)[0, 1]
 
 
 def color_condition(image: Image.Image, condition: str):
@@ -239,12 +307,22 @@ def color_condition(image: Image.Image, condition: str):
     color_hsv = colorsys.rgb_to_hsv(*color)
     if condition == "white" or condition == "black":
         if abs(avg_color_hsv[2] - color_hsv[2]) > 38:
-            return 0.0
+            return 0.0, avg_color
     else:
         if 0.15 < abs(avg_color_hsv[0] - color_hsv[0]) < 0.85:
-            return 0.0
+            return 0.0, avg_color
     ref_image = Image.new("RGB", image.size, avg_color)
-    return calculate_ssim(image, ref_image)
+    return calculate_ssim(image, ref_image), avg_color
+
+
+def count_pixels(image, reference_color, max_distance=4):
+    image = np.array(image)
+    ref_color = np.array(reference_color)
+    max_distance_squared = max_distance ** 2
+    pixels = image.reshape(-1, image.shape[-1])
+    squared_distances = np.sqrt(np.sum((pixels - ref_color) ** 2, axis=1))
+    count = np.sum(squared_distances <= max_distance_squared)
+    return count / (image.shape[0] * image.shape[1])
 
 
 def symmetry_condition(image: Image.Image, condition: str):
@@ -260,6 +338,7 @@ def symmetry_condition(image: Image.Image, condition: str):
 
 
 def compute_clapscore_at(audio_list, text_list):
+    from transformers import ClapModel
     with torch.no_grad():
         audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000) for audio in audio_list]
         model = ClapModel.from_pretrained("laion/clap-htsat-unfused").to('cuda')
@@ -271,6 +350,7 @@ def compute_clapscore_at(audio_list, text_list):
 
 
 def compute_clapscore_aa(audio, ref_audio_list):
+    from transformers import ClapModel
     with torch.no_grad():
         audio = librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000)
         ref_audio_list = [librosa.resample(ref_audio, orig_sr=SAMPLE_RATE, target_sr=48000) for ref_audio in ref_audio_list]
@@ -330,14 +410,13 @@ def find_optimal_thresholds(pred_list, label_list):
     return best_low_threshold, best_high_threshold
 
 
-def audio_segmentation(audio, top_db=60, min_duration=1.0):
+def audio_segmentation(audio, top_db=40, min_duration=1.0):
     non_silent_intervals = librosa.effects.split(audio, top_db=top_db)
     segments = []
-    min_silence_samples = int(min_duration * SAMPLE_RATE)
+    min_frames = int(min_duration * SAMPLE_RATE)
     previous_end = non_silent_intervals[0][0]
-
     for i in range(len(non_silent_intervals) - 1):
-        if non_silent_intervals[i][1] + min_silence_samples < non_silent_intervals[i + 1][0]:
+        if non_silent_intervals[i][1] + min_frames < non_silent_intervals[i + 1][0]:
             segments.append(audio[previous_end: non_silent_intervals[i][1]])
             previous_end = non_silent_intervals[i + 1][0]
     if previous_end < non_silent_intervals[-1][1]:
@@ -346,6 +425,7 @@ def audio_segmentation(audio, top_db=60, min_duration=1.0):
 
 
 def transcribe_speech(audio_list, text_list=None, language='english'):
+    import evaluate
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     model = AutoModelForSpeechSeq2Seq.from_pretrained("BELLE-2/Belle-whisper-large-v3-zh" if language == 'chinese' else "openai/whisper-large-v3")
     wer = evaluate.load('cer') if language == 'chinese' else evaluate.load('wer')
@@ -372,7 +452,6 @@ def transcribe_speech(audio_list, text_list=None, language='english'):
 
 def calculate_pitch(audio, gender=None, inst=''):
     import parselmouth
-
     def extract_pitch(audio, hop_size=256, f0_min=80, f0_max=600, num_bins=100):
         pitch_obj = parselmouth.Sound(audio, SAMPLE_RATE).to_pitch(
             time_step=hop_size / SAMPLE_RATE,
@@ -439,6 +518,7 @@ def calculate_volume(audio):
 
 
 def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
+    from transformers import Wav2Vec2FeatureExtractor, WavLMForXVector
     feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained('microsoft/wavlm-base-sv')
     model = WavLMForXVector.from_pretrained('microsoft/wavlm-base-sv').to('cuda')
     audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=16000) for audio in audio_list]
@@ -464,9 +544,7 @@ def text_instruction_following_verify(text_list, instruction_list):
     """
     The instruction list should have two parameters, instruction_type and instruction_params.
     The return will be a list of {0, 1}s representing the instruction following result for each.
-    TODO: more will come in the future, only speech-compatible ones are included.
     """
-    from nltk.tokenize import word_tokenize
     output_list = []
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     for text, inst in zip(text_list, instruction_list):
@@ -494,7 +572,7 @@ def text_instruction_following_verify(text_list, instruction_list):
 
 
 def extract_json(text):
-    match = re.search(r'\{.*}', text, re.DOTALL)
+    match = re.search(r'\{.*?}', text, re.DOTALL)
     if match:
         json_str = match.group(0)
         try:
@@ -507,8 +585,9 @@ def extract_json(text):
                 return {}
     return {}
 
+
 def extract_list(text):
-    match = re.search(r'\[.*]?', text)
+    match = re.search(r'\[.*?]', text)
     if match:
         try:
             return json.loads(match.group(0))

@@ -1,7 +1,12 @@
 import random
+import os
+import shutil
+
+import numpy as np
 
 from model import Model
 from utils import *
+
 
 class TangoFlux(Model):
     def __init__(self):
@@ -22,11 +27,11 @@ class TangoFlux(Model):
             })
         return res_list
 
+
 class Tango2(Model):
     def __init__(self):
-        super().__init__()        
         from models.tango.tango import Tango
-        self.model = Tango("declare-lab/tango2")
+        self.model = Tango("declare-lab/tango2-full")
 
     def generate(self, query_list):
         res_list = []
@@ -37,12 +42,18 @@ class Tango2(Model):
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
                 'audio_list': [librosa.resample(
-                    self.model.generate(query['instruction']).astype(np.float32)/np.iinfo(np.int16).max,
+                    self.model.generate(query['instruction'], steps=200).astype(np.float32)/np.iinfo(np.int16).max,
                     orig_sr=16000,
                     target_sr=SAMPLE_RATE
                 )]
             })
         return res_list
+
+
+class TangoMusic(Tango2):
+    def __init__(self):
+        from models.tango.tango import Tango
+        self.model = Tango("declare-lab/tango-music-af-ft-mc")
 
 
 class StableAudio(Model):
@@ -51,8 +62,8 @@ class StableAudio(Model):
         from huggingface_hub import login
         from diffusers import StableAudioPipeline        
         login(token=HF_KEY)
-        self.model=StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16)
-        self.model = self.model.to("cuda")        
+        self.model = StableAudioPipeline.from_pretrained("stabilityai/stable-audio-open-1.0", torch_dtype=torch.float16)
+        self.model = self.model.to("cuda")
         
     def generate(self, query_list):
         res_list = []
@@ -77,6 +88,7 @@ class StableAudio(Model):
                 )]
             })
         return res_list
+
 
 class MusicGen(Model):
     def __init__(self):
@@ -104,8 +116,10 @@ class MusicGen(Model):
             })
         return res_list
 
+
 class YuE(Model):
     def __init__(self):
+<<<<<<< HEAD
 
         from model import GeminiModel        
         system_prompt="""Rephrase the given sentence to match the style of the example provided. 
@@ -118,6 +132,11 @@ class YuE(Model):
         
         Input:"""
         self.genre_corrector=GeminiModel('gemini-2.0-flash', system_prompt)
+=======
+        os.chdir("./models/YuE/inference")
+        with open("lyrics.txt", "w") as f:
+            f.write("[verse]\n\n[chorus]\n\n[outro]")
+>>>>>>> 5def335df8a83bf1012ddc34ac550f1373b504a4
             
     def generate(self, query_list):
         
@@ -156,5 +175,84 @@ class YuE(Model):
                 'response': AUDIO_TOKEN(0),
                 'image_list': [],
                 'audio_list': [output],
+            })
+        return res_list
+
+
+class AudioGen(Model):
+    def __init__(self):
+        from audiocraft.models import AudioGen
+        self.model = AudioGen.get_pretrained("facebook/audiogen-medium")
+
+    def generate(self, query_list):
+        from audiocraft.data.audio import audio_write
+        res_list = []
+        for query in tqdm(query_list):
+            audio = self.model.generate([query['instruction']])
+            audio_write('./output/AudioGen/temp', audio.squeeze(0).cpu(), self.model.sample_rate)
+            audio, _ = librosa.load('./output/AudioGen/temp.wav', sr=SAMPLE_RATE)
+            res_list.append({
+                "query": query,
+                "response": AUDIO_TOKEN(0),
+                "image_list": [],
+                "audio_list": [audio],
+            })
+        os.remove('./output/AudioGen/temp.wav')
+        return res_list
+
+
+class Magnet(AudioGen):
+    def __init__(self):
+        from audiocraft.models import MAGNeT
+        self.model = MAGNeT.get_pretrained("facebook/magnet-medium-10secs")
+
+
+class AudioLDM2(Model):
+    def __init__(self):
+        from diffusers import AudioLDM2Pipeline
+        self.pipe = AudioLDM2Pipeline.from_pretrained("cvssp/audioldm2-large", torch_dtype=torch.float16)
+        self.pipe = self.pipe.to("cuda")
+
+    def generate(self, query_list):
+        res_list = []
+        random.seed(0)
+        for query in query_list:
+            audio = self.pipe(
+                query['instruction'],
+                num_inference_steps=200,
+                audio_length_in_s=10.0,
+                num_waveforms_per_prompt=3,
+                generator=torch.Generator("cuda").manual_seed(random.randint(0, 1000))
+            ).audios
+
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [librosa.resample(librosa.to_mono(audio), orig_sr=16000, target_sr=SAMPLE_RATE)]
+            })
+        return res_list
+
+
+class MakeAnAudio2(Model):
+    def generate(self, query_list):
+        query_list = [query['instruction'] + '\n' for query in query_list]
+        os.makedirs('./models/Make-An-Audio-2/input', exist_ok=True)
+        with open('./models/Make-An-Audio-2/input/prompts.txt', 'w', encoding='utf-8') as f:
+            f.writelines(query_list)
+        os.chdir("./models/Make-An-Audio-2")
+        if os.path.exists('./output'):
+            shutil.rmtree('./output')
+            os.makedirs('./output')
+        os.system("PYTHONPATH=. python scripts/gen_wav.py")
+        os.chdir("../..")
+        res_list = []
+        for idx, query in enumerate(query_list):
+            audio, sr = librosa.load(f'./models/Make-An-Audio-2/output/{idx}.wav', sr=SAMPLE_RATE)
+            res_list.append({
+                'query': query,
+                'response': AUDIO_TOKEN(0),
+                'image_list': [],
+                'audio_list': [audio],
             })
         return res_list

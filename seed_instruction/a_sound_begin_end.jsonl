@@ -2,12 +2,12 @@
 {"instruction": "Generate an audio that starts with the sound of fireworks.", "start": "fireworks", "instruction_para": "Create an audio that begins with the sound of fireworks."}
 {"instruction": "Generate an audio that starts with the sound of can opening.", "start": "can opening", "instruction_para": "Create an audio that begins with the sound of a can being opened."}
 {"instruction": "Generate an audio that starts with the sound of laughing.", "start": "laughing", "instruction_para": "Create an audio that begins with the sound of laughter."}
-{"instruction": "Generate an audio that starts with the sound of coughing.", "start": "coughing", "instruction_para": "Create an audio that begins with the sound of coughing."}
+{"instruction": "Generate an audio that starts with the sound of a crying baby.", "start": "crying baby", "instruction_para": "Create an audio that begins with the sound of a crying baby."}
 {"instruction": "Generate an audio that ends with the sound of toilet flush.", "end": "toilet flush", "instruction_para": "Create an audio that concludes with the sound of a toilet flushing."}
 {"instruction": "Generate an audio that ends with the sound of breathing.", "end": "breathing", "instruction_para": "Create an audio that concludes with the sound of breathing."}
 {"instruction": "Generate an audio that ends with the sound of church bells.", "end": "church bells", "instruction_para": "Create an audio that concludes with the sound of church bells."}
 {"instruction": "Generate an audio that ends with the sound of crow.", "end": "crow", "instruction_para": "Create an audio that concludes with the sound of a crow."}
-{"instruction": "Generate an audio that ends with the sound of frog.", "end": "frog", "instruction_para": "Create an audio that concludes with the sound of a frog."}
+{"instruction": "Generate an audio that ends with the sound of crickets.", "end": "crickets", "instruction_para": "Create an audio that concludes with the sound of crickets."}
 {"instruction": "Generate an audio that starts with the sound of pig and ends with the sound of car horn.", "start": "pig", "end": "car horn", "instruction_para": "Create an audio that begins with the sound of a pig and concludes with the sound of a car horn."}
 {"instruction": "Generate an audio that starts with the sound of cat and ends with the sound of clapping.", "start": "cat", "end": "clapping", "instruction_para": "Create an audio that begins with the sound of a cat and concludes with the sound of clapping."}
 {"instruction": "Generate an audio that starts with the sound of clock alarm and ends with the sound of coughing.", "start": "clock alarm", "end": "coughing", "instruction_para": "Create an audio that begins with the sound of a clock alarm and concludes with the sound of coughing."}

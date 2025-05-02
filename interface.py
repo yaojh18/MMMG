@@ -1,8 +1,9 @@
 import threading
 import random
-import gradio as gr
-from gradio_image_prompter import ImagePrompter
-from gradio_image_prompter.image_prompter import PromptValue
+import time
+
+import io
+import sys
 from abc import abstractmethod
 
 from utils import *
@@ -41,6 +42,7 @@ class MultiLabelInterface(Interface):
         super().__init__(**kwargs)
 
     def construct_interface(self):
+        import gradio as gr
         if self.shuffle:
             self.idx_list = random.sample(range(len(self.data_list)), len(self.data_list))
         else:
@@ -130,6 +132,7 @@ class MultiLabelInterface(Interface):
             return interface
 
     def update_interface(self, current_index, step, judgement):
+        import gradio as gr
         if self.multi_choice:
             self.eval_list[current_index] = [self.label_list.index(j) for j in judgement]
         else:
@@ -157,6 +160,7 @@ class FreeLabelInterface(Interface):
         super().__init__(**kwargs)
 
     def construct_interface(self):
+        import gradio as gr
         with gr.Blocks() as interface:
             current_index = gr.State(0)
             res_image = gr.Image(
@@ -192,6 +196,7 @@ class FreeLabelInterface(Interface):
             return interface
 
     def update_interface(self, current_index, step, judgement):
+        import gradio as gr
         self.eval_list[current_index] = judgement.strip()
         current_index += step
         if current_index == len(self.data_list):
@@ -214,6 +219,9 @@ class LabelBBoxInterface(Interface):
         self.res_list = [FAILED_TOKEN] * len(self.data_list)
 
     def construct_interface(self):
+        import gradio as gr
+        from gradio_image_prompter import ImagePrompter
+        from gradio_image_prompter.image_prompter import PromptValue
         with gr.Blocks() as interface:
             current_index = gr.State(0)
             inst_textbox = gr.Textbox(
@@ -260,6 +268,8 @@ class LabelBBoxInterface(Interface):
             return interface
 
     def update_interface(self, current_index, step, image_prompter):
+        from gradio_image_prompter.image_prompter import PromptValue
+        import gradio as gr
         points = image_prompter["points"]
         self.res_list[current_index] = (int(points[-1][0]), int(points[-1][1]), int(points[-1][3]), int(points[-1][4])) if len(points) > 0 else None
         current_index += step
@@ -285,6 +295,7 @@ class CalibratedLabelInterface(Interface):
         self.eval_list = [FAILED_TOKEN] * len(self.data_list)
 
     def construct_interface(self):
+        import gradio as gr
         with gr.Blocks() as interface:
             audios = []
             radios = []
@@ -311,5 +322,6 @@ class CalibratedLabelInterface(Interface):
         self.eval_list[i] = self.label_list.index(j)
 
     def submit(self):
+        import gradio as gr
         self.is_finished.set()
         return gr.update(visible=True)
