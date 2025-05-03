@@ -8,7 +8,7 @@ import textwrap
 def plot_model_radar(cat='i'):
     if cat == 'i':
         df = pd.read_csv('./figures/i_eval.csv')
-        selected_models = ['GPT-4o', 'Imagen 3', 'Luma Photon', 'Dalle 3', 'SD 3.5']
+        selected_models = ['GPT Image', 'Gemini 2', 'Imagen 3', 'Dalle 3', 'SD 3.5']
     elif cat == 'a':
         df = pd.read_csv('./figures/a_eval.csv')
         selected_models = ['Stable Audio', 'AudioLDM 2', 'Make-An-Audio 2 (audio only)', 'MusicGen (music only)']

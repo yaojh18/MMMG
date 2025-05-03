@@ -221,7 +221,7 @@ class ASpeechAttribute(EvalUnit):
         self.save()
 
         for data, inst in zip(res_list, inst_list):
-            pitch, pitch_s = calculate_pitch(data['audio_list'][0], data['model_eval'][0], inst)
+            pitch, pitch_s = calculate_pitch(data['audio_list'][0], data['auto_eval'][0], inst)
             if data['auto_eval'][0] == 0:
                 data['auto_eval'][1] = pitch
                 data['auto_eval_score'][1] = pitch_s
@@ -233,10 +233,40 @@ class ASpeechAttribute(EvalUnit):
             data['auto_eval_score'][3] = speed_s
         self.save()
 
+    def human_evaluate(self):
+        human_data_list = []
+        idx = 0
+        for data in self.res_list:
+            if len(data['audio_list']) != 1:
+                data['human_eval'] = FAILED_TOKEN
+                data['human_eval_score'] = 0.0
+                continue
+            human_data_list.append(data)
+            data['human_eval'] = idx
+            idx += 1
+
+        interface = MultiLabelInterface(
+            label_list=['Male', 'Female', 'None of the above'],
+            eval_inst_list=["What is the gender of the speaker in the given speech?"] * len(human_data_list),
+            data_list=human_data_list,
+            mm_type='a'
+        )
+        interface.start()
+        for data, inst in zip(self.res_list, self.inst_list):
+            data['human_eval'] = interface.eval_list[data['human_eval']]
+            data['human_eval_score'] = float(data['human_eval'] == ('male', 'female').index(inst['gender'])) \
+                if isinstance(data['human_eval'], int) else data['human_eval']
+        self.save()
+
     def compute_accuracy(self):
         wer_list = [data['wer'] for data in self.res_list]
         model_eval_list = [np.mean([me for me in data['auto_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
         return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
+
+    def compute_correlation(self):
+        model_eval_list = [res['auto_eval_score'][0] for res in self.res_list if res['human_eval'] <= 1]
+        human_eval_list = [res['human_eval_score'] for res in self.res_list if res['human_eval'] <= 1]
+        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
 
 
 class ASpeechChinese(ASpeechAttribute):
@@ -259,8 +289,8 @@ class ASpeechImitate(EvalUnit):
             text_list.append(inst['text'])
             data['transcript'] = idx
             idx += 1
-        transcripts, wers = transcribe_speech(audio_list)
-        for data in self:
+        transcripts, wers = transcribe_speech(audio_list, text_list)
+        for data in self.res_list:
             data['wer'] = wers[data['transcript']] if data['transcript'] != FAILED_TOKEN else 0.0
             data['transcript'] = transcripts[data['transcript']] if data['transcript'] != FAILED_TOKEN else ''
 
@@ -282,6 +312,7 @@ class ASpeechImitate(EvalUnit):
         self.save()
 
     def human_evaluate(self):
+        self.load_inst_mm()
         ref_audio_list = []
         human_data_list = []
         idx = 0
@@ -302,16 +333,16 @@ class ASpeechImitate(EvalUnit):
         )
         interface.start()
         for data in self.res_list:
-            data['human_eval'] = float(interface.eval_list[data['human_eval']] == 1) if data['human_eval'] != FAILED_TOKEN else 0.0
+            data['human_eval'] = float(interface.eval_list[data['human_eval']] == 0) if data['human_eval'] != FAILED_TOKEN else 0.0
         self.save()
 
-    def compute_accuracy(self, threshold=0.86):
+    def compute_accuracy(self, threshold=0.93):
         wer_list = [data['wer'] for data in self.res_list]
         model_eval_list = [data['model_eval'] for data in self.res_list]
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
         return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
 
-    def compute_correlation(self, threshold=0.86):
+    def compute_correlation(self, threshold=0.93):
         model_eval_list = [data['model_eval'] for data in self.res_list]
         human_eval_list = [data['human_eval'] for data in self.res_list]
 
@@ -336,7 +367,7 @@ class ASpeechModify(EvalUnit):
             data['transcript'] = idx
             idx += 1
         transcripts, _ = transcribe_speech(audio_list)
-        for data in self:
+        for data in self.res_list:
             data['transcript'] = transcripts[data['transcript']] if data['transcript'] != FAILED_TOKEN else ''
         self.save()
 

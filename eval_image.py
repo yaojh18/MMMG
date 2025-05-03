@@ -57,7 +57,7 @@ class IObject(EvalUnit):
                 data['model_eval'] = [float(data['model_eval'][0] == (inst['count'] - 2))]
             self.save()
 
-    def human_evaluate(self, output_status=True):
+    def human_evaluate(self):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -85,8 +85,6 @@ class IObject(EvalUnit):
             for data, inst in zip(self.res_list, self.inst_list):
                 data['human_eval'] = [float(data['human_eval'] == (inst['count'] - 2))]
             self.save()
-        if output_status:
-            print('Human evaluation finished!')
 
     def compute_accuracy(self, return_list=False):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
@@ -228,7 +226,7 @@ class ISpacial(EvalUnit):
     def human_judge_process_func(res: str):
         pass
 
-    def human_evaluate(self, output_status=True):
+    def human_evaluate(self):
         human_queries = []
         human_res_list = []
         idx = 0
@@ -251,8 +249,6 @@ class ISpacial(EvalUnit):
             data['human_eval'] = [self.human_judge_process_func(interface.eval_list[idx]) if idx != FAILED_TOKEN
                                   else 0.0 for idx in data['human_eval']]
         self.save()
-        if output_status:
-            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
@@ -395,7 +391,7 @@ class IOCR(EvalUnit):
                 if data['model_eval'] != FAILED_TOKEN else ''
         self.save()
 
-    def human_evaluate(self, output_status=True):
+    def human_evaluate(self):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -418,8 +414,6 @@ class IOCR(EvalUnit):
             data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip() \
                 if data['human_eval'] != FAILED_TOKEN else ''
         self.save()
-        if output_status:
-            print('Human evaluation finished!')
 
     def compute_accuracy(self, return_list=False):
         label_list = [[self.normalize_text(inst['text'])] for inst in self.inst_list]
@@ -497,7 +491,7 @@ class IOCRTwo(IOCR):
                 data['model_eval'] = ['', '']
         self.save()
 
-    def human_evaluate(self, output_status=True):
+    def human_evaluate(self):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -544,8 +538,6 @@ class IOCRTwo(IOCR):
             else:
                 data['human_eval'] = ['', '']
         self.save()
-        if output_status:
-            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
@@ -598,7 +590,7 @@ class IOCRChinese(IOCR):
                 data['model_eval_score'] = ''
         self.save()
 
-    def human_evaluate(self, output_status=True):
+    def human_evaluate(self):
         human_inst_list = []
         human_res_list = []
         idx = 0
@@ -620,8 +612,6 @@ class IOCRChinese(IOCR):
         for data in self.res_list:
             data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip() if data['human_eval'] != FAILED_TOKEN else ''
         self.save()
-        if output_status:
-            print('Human evaluation finished!')
 
     def compute_accuracy(self):
         label_list = [[inst['text'] or FAILED_TOKEN] for inst in self.inst_list]
@@ -644,11 +634,9 @@ class IOCRMultiLingual(EvalUnit):
         self.chinese.evaluate()
         self.german.evaluate()
 
-    def human_evaluate(self, output_status=True):
-        self.chinese.human_evaluate(output_status=False)
-        self.german.human_evaluate(output_status=False)
-        if output_status:
-            print('Human evaluation finished!')
+    def human_evaluate(self):
+        self.chinese.human_evaluate()
+        self.german.human_evaluate()
 
     def compute_accuracy(self):
         return (self.chinese.compute_accuracy() + self.german.compute_accuracy()) / 2.0
@@ -890,4 +878,9 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    pass
+    task = IOCRTwo(model_name='Gemini2', sample_size=4)
+    task.evaluate()
+    print(task.compute_accuracy())
+    task = IOCRMultiLingual(model_name='Gemini2', sample_size=4)
+    task.evaluate()
+    print(task.compute_accuracy())

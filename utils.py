@@ -502,10 +502,10 @@ def calculate_speed(audio, transcript, inst='', language='english'):
     if 'speed' in inst:
         if language == 'english':
             speed_s = min(156.0, max(180.0, speed))
-            speed_s = float(inst['speed'] == 'high') * (speed_s - 156.0) / 24.0 + float(inst['pitch'] == 'low') * (180.0 - speed_s) / 24.0
+            speed_s = float(inst['speed'] == 'high') * (speed_s - 156.0) / 24.0 + float(inst['speed'] == 'low') * (180.0 - speed_s) / 24.0
         else:
             speed_s = min(232.0, max(272.0, speed))
-            speed_s = float(inst['speed'] == 'high') * (speed_s - 232.0) / 40.0 + float(inst['pitch'] == 'low') * (272.0 - speed_s) / 40.0
+            speed_s = float(inst['speed'] == 'high') * (speed_s - 232.0) / 40.0 + float(inst['speed'] == 'low') * (272.0 - speed_s) / 40.0
     else:
         speed_s = FAILED_TOKEN
     return speed, speed_s

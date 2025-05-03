@@ -56,7 +56,7 @@ class RandomModel(Model):
             return ['StableAudio', 'AudioLDM2', 'AudioGen', 'Tango2', 'MakeAnAudio2']
         if inst_name.startswith('a_music'):
             return ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
-        if inst_name.startswith('a_speech'):
+        if inst_name.startswith('a_speech') or inst_name.startswith('a_consistency') or inst_name.startswith('a_structure'):
             return ['VoxInstructAgent', 'VoiceLDMAgent']
         raise NotImplementedError(inst_name)
 

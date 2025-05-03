@@ -51,18 +51,19 @@ class EvalPipeline:
 
     def evaluate(self):
         for index, row in self.eval_df.iterrows():
+            task_name = row['task']
+            task = self.eval_map(task_name)
             if pd.isna(row['accuracy']):
-                task_name = row['task']
-                task = self.eval_map(task_name)
-                # task.evaluate()
-                # self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
-                # self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+                task.evaluate()
+            self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+            self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
 
     def human_evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(task_name)
-            # task.evaluate()
+            # if pd.isna(row['accuracy']):
+            #     task.evaluate()
             if pd.isna(row['human_accuracy']):
                 task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
@@ -79,13 +80,13 @@ class EvalBenchmark:
 
         if cat == 'i':
             base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3',
-                               'StableDiffusion3_5', 'GPT4o']
+                               'StableDiffusion3_5', 'Gemini2', 'GPT4o']
         elif cat == 'it':
-            base_model_list = ['Gemini2', 'GeminiAgent', 'HybridAgent']
+            base_model_list = ['Gemini2', 'GeminiAgent', 'GPT4oAgent', 'HybridAgent']
         elif cat == 'aso':
             base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2']
         elif cat == 'asp':
-            base_model_list = ['VoxInstructAgent', 'VoiceLDMAgent', 'SpiritLM', 'BaichuanAudio']
+            base_model_list = ['VoxInstructAgent', 'VoiceLDMAgent']
         else:
             base_model_list = ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
         for model_name in base_model_list + model_list:
@@ -161,18 +162,18 @@ class EvalBenchmark:
 
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    # parser.add_argument('--model_name', type=str, default='RandomModel_0', help='Name of the model.')
-    # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
+    # parser.add_argument('--model_name', type=str, default='Gemini2', help='Name of the model.')
+    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
     # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
     # pipeline.evaluate()
 
     parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
     benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.human_evaluate()
+    benchmark.rank_models()

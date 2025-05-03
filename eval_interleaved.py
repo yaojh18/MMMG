@@ -3,7 +3,7 @@ import itertools
 from eval import EvalUnit
 from prompt import *
 from interface import *
-from eval_image import IOCR, IEditColor, IEditObjectRemove, IEditText, IEditObjectAdd, IEditObjectModify
+from eval_image import IOCR
 
 
 class IConsistencySemantic(EvalUnit):
@@ -134,12 +134,11 @@ class AConsistencyConversation(EvalUnit):
         ref_audio_list = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
-            last_seen = {}
             pair_list = []
             for i, num in enumerate(inst['order']):
-                if num in last_seen:
-                    pair_list.append((last_seen[num], i))
-                last_seen[num] = i
+                for j, num2 in enumerate(inst['order'][i + 1:]):
+                    if num == num2:
+                        pair_list.append((i, j + i + 1))
             if len(data['transcript']) != len(inst['order']):
                 data['model_eval'] = [FAILED_TOKEN] * len(pair_list)
             else:
@@ -158,12 +157,11 @@ class AConsistencyConversation(EvalUnit):
         ref_audio_list = []
         idx = 0
         for data, inst in zip(self.res_list, self.inst_list):
-            last_seen = {}
             pair_list = []
             for i, num in enumerate(inst['order']):
-                if num in last_seen:
-                    pair_list.append((last_seen[num], i))
-                last_seen[num] = i
+                for j, num2 in enumerate(inst['order'][i + 1:]):
+                    if num == num2:
+                        pair_list.append((i, j + i + 1))
             if len(data['transcript']) != len(inst['order']):
                 data['human_eval'] = [FAILED_TOKEN] * len(pair_list)
             else:
@@ -183,12 +181,12 @@ class AConsistencyConversation(EvalUnit):
             data['human_eval'] = [1.0 - interface.eval_list[i] if i != FAILED_TOKEN else 0.0 for i in data['human_eval']]
         self.save()
 
-    def compute_accuracy(self, threshold=0.86):
+    def compute_accuracy(self, threshold=0.93):
         auto_eval_list = [np.mean(data['auto_eval']) for data in self.res_list]
         model_eval_list = [np.mean([me > threshold for me in data['model_eval']]) for data in self.res_list]
         return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
 
-    def compute_correlation(self, threshold=0.86):
+    def compute_correlation(self, threshold=0.93):
         model_eval_list = [res['model_eval'] for res in self.res_list]
         human_eval_list = [res['human_eval'] for res in self.res_list]
 
@@ -197,7 +195,7 @@ class AConsistencyConversation(EvalUnit):
         # human_eval_cat = list(itertools.chain(*human_eval_list))
         # threshold = find_optimal_threshold(model_eval_cat, human_eval_cat)
 
-        model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
+        model_eval_list = [[e > threshold for e in model_eval] for model_eval in model_eval_list]
         human_eval_cat = list(itertools.chain(*human_eval_list))
         model_eval_cat = list(itertools.chain(*model_eval_list))
         return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
@@ -222,7 +220,7 @@ class AConsistencyVariant(EvalUnit):
                 data['wer'] = [wers[i] for i in data['transcript']]
                 data['transcript'] = [transcripts[i] for i in data['transcript']]
             else:
-                data['wer'] = [[0.0, 0.0, 0.0] for _ in data['transcript']]
+                data['wer'] = [0.0, 0.0, 0.0]
         self.save()
         for data, inst in zip(self.res_list, self.inst_list):
             if 'transcript' in data:
@@ -233,7 +231,7 @@ class AConsistencyVariant(EvalUnit):
                     data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
                                               or (a > b > c and inst['constraint'][1] == 'decrease'))
                 elif inst['constraint'][0] == 'speed':
-                    a, _= calculate_speed(data['audio_list'][0], data['transcript'][0])
+                    a, _ = calculate_speed(data['audio_list'][0], data['transcript'][0])
                     b, _ = calculate_speed(data['audio_list'][1], data['transcript'][1])
                     c, _ = calculate_speed(data['audio_list'][2], data['transcript'][2])
                     data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
@@ -449,7 +447,7 @@ class ITCoherenceSize(ITCoherenceColor):
         rel_map = {'size': 'larger', 'area': 'larger', 'volume': 'bigger', 'length': 'longer', 'height': 'higher'}
         queries += [form_mm_query(I_OBJECT_EXIST_COT_PROMPT(
             f"exactly one {obj_list[i]}, exactly one {obj_list[j]} and the {obj_list[j]} being obviously "
-            f"{rel_map[inst['relation']]} than the {obj_list[i]}") + inst['text'] if 'text' in inst else '',
+            f"{rel_map[inst['relation']]} than the {obj_list[i]}") + (inst['text'] if 'text' in inst else ''),
             images=data['image_list'], model=self.vlm) for i in range(3) for j in range(i + 1, 3)]
         data['object'], data['relation'] = obj_list, rel_map[inst['relation']]
         data['model_eval'] = [self.idx, self.idx + 1, self.idx + 2]
@@ -479,12 +477,12 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
         for data in self.res_list:
             if data['model_eval'][0] == 1.0:
                 queries.append(form_mm_query(I_SPACIAL_RELATIVE_LR(
-                    data['object'][0][0], data['object'][0][1]), images=data['image_list']))
+                    data['object'][0][0], data['object'][0][1]), images=data['image_list'], model=self.vlm))
                 data['model_eval'][0] = self.idx
                 self.idx += 1
             if data['model_eval'][1] == 1.0:
                 queries.append(form_mm_query(I_SPACIAL_RELATIVE_UD(
-                    data['object'][1][0], data['object'][1][1]), images=data['image_list']))
+                    data['object'][1][0], data['object'][1][1]), images=data['image_list'], model=self.vlm))
                 data['model_eval'][1] = self.idx
                 self.idx += 1
         responses = query_vlm(queries, model=self.vlm)
@@ -535,6 +533,7 @@ class ITCoherenceSpacialRelative(ITCoherenceColor):
 class ITCoherenceSpacialAbsolute(ITCoherenceColor):
     inst_name = 'it_coherence_spacial_absolute'
     default_eval = [0.0, 0.0]
+    vlm = 'gemini'
 
     def evaluate(self):
         super().evaluate()
@@ -547,7 +546,7 @@ class ITCoherenceSpacialAbsolute(ITCoherenceColor):
                                                  images=data['image_list'], model=self.vlm))
                     data['model_eval'][i] = self.idx
                     self.idx += 1
-        responses = query_vlm(queries)
+        responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             for i in range(2):
                 if isinstance(data['model_eval'][i], int):
@@ -598,12 +597,7 @@ class ITCoherenceOCR(ITCoherence, IOCR):
 
     @staticmethod
     def model_process_response(data, responses):
-        text_res = re.search(r'(\[.*]?)', responses[data['model_eval']])
-        if text_res is not None:
-            text_res = eval(text_res.group(1))
-        else:
-            text_res = []
-        data['model_eval'] = ' '.join(text_res).lower().strip()
+        data['model_eval'] = ' '.join(extract_list(responses[data['model_eval']])).lower().strip()
 
     def human_evaluate(self):
         human_inst_list = []
@@ -644,6 +638,8 @@ class ITCoherenceOCR(ITCoherence, IOCR):
 class ITCoherenceMath(ITCoherenceColor):
     inst_name = 'it_coherence_math'
     allow_multi_images = True
+    vlm = 'gemini'
+    default_eval = [0.0, 0.0]
 
     def evaluate(self):
         self.load_inst_mm()
@@ -671,19 +667,28 @@ class ITCoherenceMath(ITCoherenceColor):
         if 'text' in data:
             human_inst_list.append("(Ignore the given image.)\n" + LLM_AS_A_JUDGE_PROMPT.format(data['pattern'], data['text']))
             human_res_list.append({'image_list': data['image_list'][-1:]})
-            data['human_eval'] = [self.idx, self.idx + 1]
-            self.idx += 2
-        else:
-            data['human_eval'] = [0.0, self.idx]
+            data['human_eval'] = [self.idx, 0.0]
             self.idx += 1
-        human_inst_list.append(VLM_AS_A_JUDGE_PROMPT.format(data['pattern']))
-        human_res_list.append({'image_list': data['image_list'][-1:]})
+        else:
+            data['human_eval'] = [0.0, 0.0]
+        if 'pattern' in data:
+            human_inst_list.append(VLM_AS_A_JUDGE_PROMPT.format(data['pattern']))
+            human_res_list.append({'image_list': data['image_list'][-1:]})
+            data['human_eval'][1] = self.idx
+            self.idx += 1
+
+    @staticmethod
+    def human_process_response(data, responses):
+        data['human_eval'] = [float(responses[i] == 0) if isinstance(i, int) else i for i in data['human_eval']]
 
 
-class ITCoherenceCode(EvalUnit):
+class ITCoherenceCode(ITCoherenceColor):
     inst_name = 'it_coherence_code'
+    allow_multi_images = True
+    default_eval = 0.0
 
     def evaluate(self):
+        super().evaluate()
         self.load_inst_mm()
         text_pattern = r'<image_start><image_\d+><image_end>'
         for data, inst in zip(self.res_list, self.inst_list):
@@ -694,10 +699,58 @@ class ITCoherenceCode(EvalUnit):
                 data['auto_eval'] = calculate_dreamsim(data['image_list'][-1], inst['ref_image_list'][0])
         self.save()
 
+    def model_process_data(self, data, inst, res, queries):
+        queries.append(form_mm_query(I_OBJECT_EXIST_COT_PROMPT(inst['object']), images=data['image_list'][-1:], model=self.vlm))
+        data['object'], data['model_eval'] = inst['object'], self.idx
+        self.idx += 1
+
+    @staticmethod
+    def model_process_response(data, responses):
+        data['model_eval'] = float('yes' in responses[data['model_eval']].strip().lower()[-20:])
+
+    def human_process_data(self, data, human_inst_list, human_res_list):
+        if 'object' in data:
+            human_inst_list.append(f"Is/Are there {data['object']} in the given image?\n")
+            human_res_list.append(data)
+            data['human_eval'] = self.idx
+            self.idx += 1
+        else:
+            data['human_eval'] = FAILED_TOKEN
+
+    @staticmethod
+    def human_process_response(data, responses):
+        data['human_eval'] = float(responses[data['human_eval']] == 0)
+
     def compute_accuracy(self):
-        auto_eval_list = [res['auto_eval'] for res in self.res_list]
+        auto_eval_list = [res['auto_eval'] * res['model_eval'] for res in self.res_list]
         return np.mean(auto_eval_list)
 
 
 if __name__ == '__main__':
-    pass
+    task = ITCoherenceSpacialRelative(model_name='Gemini2', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceSpacialAbsolute(model_name='Gemini2', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceMath(model_name='Gemini2', sample_size=4)
+    task.evaluate()
+
+    task = ITCoherenceSpacialRelative(model_name='GeminiAgent', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceSpacialAbsolute(model_name='GeminiAgent', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceMath(model_name='GeminiAgent', sample_size=4)
+    task.evaluate()
+
+    task = ITCoherenceSpacialRelative(model_name='GPT4oAgent', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceSpacialAbsolute(model_name='GPT4oAgent', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceMath(model_name='GPT4oAgent', sample_size=4)
+    task.evaluate()
+
+    task = ITCoherenceSpacialRelative(model_name='HybridAgent', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceSpacialAbsolute(model_name='HybridAgent', sample_size=4)
+    task.evaluate()
+    task = ITCoherenceMath(model_name='HybridAgent', sample_size=4)
+    task.evaluate()
