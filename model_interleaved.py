@@ -4,6 +4,9 @@ import itertools
 
 from torchvision.models.detection import image_list
 
+import sys
+sys.path.append("/home/ubuntu/MM-IFEval/models/")
+
 from model import *
 from model_image import *
 from model_audio import *
@@ -607,7 +610,7 @@ class SeedLlama(Model):
             else:
                 raise NotImplementedError
 
-        self.transform = get_transform
+        self.transform = get_transform()
 
         model_cfg = OmegaConf.load('./models/SEED/configs/llm/seed_llama_14b.yaml')
         self.model = hydra.utils.instantiate(model_cfg, torch_dtype=torch.float16)
@@ -628,7 +631,12 @@ class SeedLlama(Model):
 
         img_tokens = ""
         for image in images:
-            image_tensor = self.transform(image.convert("RGB")).to(self.device)
+            if isinstance(image, str):
+                if not os.path.exists(image):
+                    raise FileNotFoundError(f"Image path not found: {image}")
+                image = Image.open(image).convert('RGB')
+            
+            image_tensor = self.transform(image).to(self.device)
             img_ids = self.tokenizer.encode_image(image_torch=image_tensor)
             img_ids = img_ids.view(-1).cpu().numpy()
             img_tokens += BOI_TOKEN + ''.join([IMG_TOKEN.format(i) for i in img_ids]) + EOI_TOKEN
@@ -702,13 +710,16 @@ class SeedLlama(Model):
                 })
 
             except Exception as e:
+                import traceback
                 print(f"[Error] Query failed: {query}, Error: {e}")
+                traceback.print_exc()  # 打印完整堆栈信息
                 res_list.append({
                     "query": query,
                     "response": '',
                     "image_list": [],
                     "audio_list": [],
                 })
+
 
         return res_list
 
