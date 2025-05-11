@@ -862,25 +862,33 @@ class QwenOmni(Model):
 
 class Anole(Model):
     def generate(self, query_list):
-        os.makedirs('./models/Anole/input/', exist_ok=True)
-        with open('./models/Anole/input/prompt.txt', 'w', encoding='utf-8') as f:
-            f.writelines([query['instruction'] + '\n' for query in query_list])
-        os.chdir("./models/Anole")
-        if os.path.exists('./output'):
-            shutil.rmtree('./output')
-            print('History output has been removed!')
-        os.system(f"python interleaved_generation.py")
-        os.chdir("../..")
+        
+        ## make input file
+        os.makedirs('./models/anole/input/', exist_ok=True)
+        with open('./models/anole/input/prompt.jsonl', 'w', encoding='utf-8') as file:
+            for query in query_list:
+                file.write(json.dumps(query['instruction'])+'\n')
+                     
+        ## make output file
+        if os.path.exists('./models/anole/output/'):
+            shutil.rmtree('./models/anole/output/')
+            os.makedirs("./models/anole/output/")
+
+        ## use model
+        os.system("""python models/anole/interleaved_generation.py""")
+        
+        ## process output
         output_list = []
         for idx, query in enumerate(query_list):
-            dir_path = f'./models/Anole/output/{idx}/'
+            dir_path = f'./models/anole/output/{idx}/'
             with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
                 text = ''.join(f.readlines())
-        image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
-        output_list.append({
-            'query': query,
-            'response': text,
-            'image_list': image_list,
-            'audio_list': [],
-        })
+                
+            image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
+            output_list.append({
+                'query': query,
+                'response': text,
+                'image_list': image_list,
+                'audio_list': [],
+            })
         return output_list
