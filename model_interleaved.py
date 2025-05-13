@@ -5,6 +5,9 @@ import itertools
 import librosa
 from torchvision.models.detection import image_list
 
+import sys
+sys.path.append("/home/ubuntu/MM-IFEval/models/")
+
 from model import *
 from model_image import *
 from model_audio import *
@@ -609,7 +612,7 @@ class SeedLlama(Model):
             else:
                 raise NotImplementedError
 
-        self.transform = get_transform
+        self.transform = get_transform()
 
         model_cfg = OmegaConf.load('./models/SEED/configs/llm/seed_llama_14b.yaml')
         self.model = hydra.utils.instantiate(model_cfg, torch_dtype=torch.float16)
@@ -630,7 +633,12 @@ class SeedLlama(Model):
 
         img_tokens = ""
         for image in images:
-            image_tensor = self.transform(image.convert("RGB")).to(self.device)
+            if isinstance(image, str):
+                if not os.path.exists(image):
+                    raise FileNotFoundError(f"Image path not found: {image}")
+                image = Image.open(image).convert('RGB')
+            
+            image_tensor = self.transform(image).to(self.device)
             img_ids = self.tokenizer.encode_image(image_torch=image_tensor)
             img_ids = img_ids.view(-1).cpu().numpy()
             img_tokens += BOI_TOKEN + ''.join([IMG_TOKEN.format(i) for i in img_ids]) + EOI_TOKEN
@@ -704,13 +712,16 @@ class SeedLlama(Model):
                 })
 
             except Exception as e:
+                import traceback
                 print(f"[Error] Query failed: {query}, Error: {e}")
+                traceback.print_exc()  # 打印完整堆栈信息
                 res_list.append({
                     "query": query,
                     "response": '',
                     "image_list": [],
                     "audio_list": [],
                 })
+
 
         return res_list
 
@@ -859,25 +870,33 @@ class QwenOmni(Model):
 
 class Anole(Model):
     def generate(self, query_list):
-        os.makedirs('./models/Anole/input/', exist_ok=True)
-        with open('./models/Anole/input/prompt.txt', 'w', encoding='utf-8') as f:
-            f.writelines([query['instruction'] + '\n' for query in query_list])
-        os.chdir("./models/Anole")
-        if os.path.exists('./output'):
-            shutil.rmtree('./output')
-            print('History output has been removed!')
-        os.system(f"python interleaved_generation.py")
-        os.chdir("../..")
+        
+        ## make input file
+        os.makedirs('./models/anole/input/', exist_ok=True)
+        with open('./models/anole/input/prompt.jsonl', 'w', encoding='utf-8') as file:
+            for query in query_list:
+                file.write(json.dumps(query['instruction'])+'\n')
+                     
+        ## make output file
+        if os.path.exists('./models/anole/output/'):
+            shutil.rmtree('./models/anole/output/')
+            os.makedirs("./models/anole/output/")
+
+        ## use model
+        os.system("""python models/anole/interleaved_generation.py""")
+        
+        ## process output
         output_list = []
         for idx, query in enumerate(query_list):
-            dir_path = f'./models/Anole/output/{idx}/'
+            dir_path = f'./models/anole/output/{idx}/'
             with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
                 text = ''.join(f.readlines())
-        image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
-        output_list.append({
-            'query': query,
-            'response': text,
-            'image_list': image_list,
-            'audio_list': [],
-        })
+                
+            image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
+            output_list.append({
+                'query': query,
+                'response': text,
+                'image_list': image_list,
+                'audio_list': [],
+            })
         return output_list
