@@ -1,5 +1,7 @@
 import itertools
 
+import numpy as np
+
 from eval import EvalUnit
 from prompt import *
 from interface import *
@@ -55,7 +57,7 @@ class IConsistencySemantic(EvalUnit):
         self.save()
 
     def compute_accuracy(self, return_list=False):
-        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
         if not return_list:
             return np.mean(model_eval_list)
         return model_eval_list
@@ -65,7 +67,7 @@ class IConsistencySemantic(EvalUnit):
         model_eval_list = [res['model_eval'] for res in self.res_list]
         human_eval_cat = list(itertools.chain(*human_eval_list))
         model_eval_cat = list(itertools.chain(*model_eval_list))
-        return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
+        return calculate_agreement(model_eval_cat, human_eval_cat), calculate_pearson(model_eval_cat, human_eval_cat)
 
 
 class IConsistencyCompose(IConsistencySemantic):
@@ -183,7 +185,7 @@ class AConsistencyConversation(EvalUnit):
 
     def compute_accuracy(self, threshold=0.93):
         auto_eval_list = [np.mean(data['auto_eval']) for data in self.res_list]
-        model_eval_list = [np.mean([me > threshold for me in data['model_eval']]) for data in self.res_list]
+        model_eval_list = [np.prod([me > threshold for me in data['model_eval']]) for data in self.res_list]
         return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
 
     def compute_correlation(self, threshold=0.93):
@@ -198,58 +200,7 @@ class AConsistencyConversation(EvalUnit):
         model_eval_list = [[e > threshold for e in model_eval] for model_eval in model_eval_list]
         human_eval_cat = list(itertools.chain(*human_eval_list))
         model_eval_cat = list(itertools.chain(*model_eval_list))
-        return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
-
-
-class AConsistencyVariant(EvalUnit):
-    inst_name = 'a_consistency_variant'
-
-    def evaluate(self):
-        idx = 0
-        audio_list = []
-        text_list = []
-        for data, inst in zip(self.res_list, self.inst_list):
-            if len(data['audio_list']) == 3:
-                audio_list += data['audio_list']
-                text_list += [inst['text']] * 3
-                data['transcript'] = [idx, idx + 1, idx + 2]
-                idx += 3
-        transcripts, wers = transcribe_speech(audio_list, text_list)
-        for data in self.res_list:
-            if 'transcript' in data:
-                data['wer'] = [wers[i] for i in data['transcript']]
-                data['transcript'] = [transcripts[i] for i in data['transcript']]
-            else:
-                data['wer'] = [0.0, 0.0, 0.0]
-        self.save()
-        for data, inst in zip(self.res_list, self.inst_list):
-            if 'transcript' in data:
-                if inst['constraint'][0] == 'pitch':
-                    a, _ = calculate_pitch(data['audio_list'][0])
-                    b, _ = calculate_pitch(data['audio_list'][1])
-                    c, _ = calculate_pitch(data['audio_list'][2])
-                    data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
-                                              or (a > b > c and inst['constraint'][1] == 'decrease'))
-                elif inst['constraint'][0] == 'speed':
-                    a, _ = calculate_speed(data['audio_list'][0], data['transcript'][0])
-                    b, _ = calculate_speed(data['audio_list'][1], data['transcript'][1])
-                    c, _ = calculate_speed(data['audio_list'][2], data['transcript'][2])
-                    data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
-                                              or (a > b > c and inst['constraint'][1] == 'decrease'))
-                else:
-                    a = calculate_volume(data['audio_list'][0])
-                    b = calculate_volume(data['audio_list'][1])
-                    c = calculate_volume(data['audio_list'][2])
-                    data['auto_eval'] = float((a < b < c and inst['constraint'][1] == 'increase')
-                                              or (a > b > c and inst['constraint'][1] == 'decrease'))
-            else:
-                data['auto_eval'] = 0.0
-        self.save()
-
-    def compute_accuracy(self):
-        wer_list = [np.mean(data['wer']) for data in self.res_list]
-        auto_eval_list = [data['auto_eval'] for data in self.res_list]
-        return np.mean([w * a for w, a in zip(wer_list, auto_eval_list)])
+        return calculate_agreement(model_eval_cat, human_eval_cat), calculate_pearson(model_eval_cat, human_eval_cat)
 
 
 class IStructure(EvalUnit):
@@ -353,7 +304,7 @@ class ITCoherence(EvalUnit):
         pass
 
     def compute_accuracy(self):
-        model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
+        model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
         return np.mean(model_eval_list)
 
     def compute_correlation(self):
@@ -361,7 +312,7 @@ class ITCoherence(EvalUnit):
         human_eval_list = [res['human_eval'] if isinstance(res['human_eval'], list) else [res['human_eval']] for res in self.res_list]
         human_eval_cat = list(itertools.chain(*human_eval_list))
         model_eval_cat = list(itertools.chain(*model_eval_list))
-        return np.mean([np.mean(he) for he in human_eval_list]), calculate_agreement(model_eval_cat, human_eval_cat)
+        return calculate_agreement(model_eval_cat, human_eval_cat), calculate_pearson(model_eval_cat, human_eval_cat)
 
 
 class ITCoherenceCount(ITCoherence):
@@ -624,9 +575,12 @@ class ITCoherenceOCR(ITCoherence, IOCR):
         self.save()
 
     def compute_accuracy(self):
-        label_list = [[self.normalize_text(res['text'] if 'text' in res else '')] for res in self.res_list]
-        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list]
-        return self._compute_accuracy(label_list, model_eval_list)
+        label_list = [[self.normalize_text(res['text'])] for res in self.res_list if 'text' in res]
+        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list if 'text' in res]
+        acc = self._compute_accuracy(label_list, model_eval_list)
+        if np.isnan(acc):
+            acc = 0.0
+        return acc * len(label_list) / len(self.res_list)
 
     def compute_correlation(self):
         label_list = [[self.normalize_text(res['text'] if 'text' in res else '')] for res in self.res_list]
@@ -727,30 +681,4 @@ class ITCoherenceCode(ITCoherenceColor):
 
 
 if __name__ == '__main__':
-    task = ITCoherenceSpacialRelative(model_name='Gemini2', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceSpacialAbsolute(model_name='Gemini2', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceMath(model_name='Gemini2', sample_size=4)
-    task.evaluate()
-
-    task = ITCoherenceSpacialRelative(model_name='GeminiAgent', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceSpacialAbsolute(model_name='GeminiAgent', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceMath(model_name='GeminiAgent', sample_size=4)
-    task.evaluate()
-
-    task = ITCoherenceSpacialRelative(model_name='GPT4oAgent', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceSpacialAbsolute(model_name='GPT4oAgent', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceMath(model_name='GPT4oAgent', sample_size=4)
-    task.evaluate()
-
-    task = ITCoherenceSpacialRelative(model_name='HybridAgent', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceSpacialAbsolute(model_name='HybridAgent', sample_size=4)
-    task.evaluate()
-    task = ITCoherenceMath(model_name='HybridAgent', sample_size=4)
-    task.evaluate()
+    pass

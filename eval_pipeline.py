@@ -28,7 +28,7 @@ class EvalPipeline:
             self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence']
         elif cat == 'asp':
             self.eval_list = ['a_speech_attribute', 'a_speech_chinese', 'a_speech_imitate', 'a_speech_modify',
-                              'a_consistency_conversation', 'a_consistency_variant', 'a_structure']
+                              'a_speech_constraint', 'a_consistency_conversation', 'a_structure']
         elif cat == 'am':
             self.eval_list = ['a_music_instrument', 'a_music_exclude', 'a_music_tempo', 'a_music_intensity']
 
@@ -38,21 +38,22 @@ class EvalPipeline:
             self.eval_df = pd.DataFrame({
                 'task': self.eval_list,
                 'accuracy': [None] * len(self.eval_list),
-                'human_accuracy': [None] * len(self.eval_list),
+                'agreement': [None] * len(self.eval_list),
                 'correlation': [None] * len(self.eval_list)
             })
             os.makedirs(f'./output/{model_name}/', exist_ok=True)
             self.eval_df.to_csv(f'./output/{model_name}/{cat}_eval.csv', index=False)
 
-    def eval_map(self, task_name):
+    @staticmethod
+    def eval_map(model_name, task_name, sample_size):
         task_name = ''.join([t.capitalize() if i > 0 else t.upper() for i, t in enumerate(task_name.split('_'))])
         task_name = task_name.replace('Ocr', 'OCR').replace('Cot', 'CoT').replace('3d', '3D')
-        return eval(f"{task_name}(model_name='{self.model_name}', sample_size={self.sample_size})")
+        return eval(f"{task_name}(model_name='{model_name}', sample_size={sample_size})")
 
     def evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
-            task = self.eval_map(task_name)
+            task = self.eval_map(self.model_name, task_name, self.sample_size)
             if pd.isna(row['accuracy']):
                 task.evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
@@ -61,13 +62,13 @@ class EvalPipeline:
     def human_evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
-            task = self.eval_map(task_name)
-            # if pd.isna(row['accuracy']):
-            #     task.evaluate()
-            if pd.isna(row['human_accuracy']):
+            task = self.eval_map(self.model_name, task_name, self.sample_size)
+            if pd.isna(row['accuracy']):
+                task.evaluate()
+            if pd.isna(row['agreement']):
                 task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
-            self.eval_df.loc[index, ['human_accuracy', 'correlation']] = task.compute_correlation()
+            self.eval_df.loc[index, ['agreement', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
 
 
@@ -80,21 +81,23 @@ class EvalBenchmark:
 
         if cat == 'i':
             base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3',
-                               'StableDiffusion3_5', 'Gemini2', 'GPT4o']
+                               'StableDiffusion3_5', 'SeedLlama', 'Anole', 'Gemini2', 'GPT4o']
         elif cat == 'it':
-            base_model_list = ['Gemini2', 'GeminiAgent', 'GPT4oAgent', 'HybridAgent']
+            base_model_list = ['SeedLlama', 'Anole', 'Gemini2', 'GeminiAgent', 'GPT4oAgent', 'HybridAgent']
         elif cat == 'aso':
             base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2']
         elif cat == 'asp':
-            base_model_list = ['VoxInstructAgent', 'VoiceLDMAgent']
+            base_model_list = ['SpiritLM', 'VoxInstructAgent', 'VoiceLDMAgent']
         else:
             base_model_list = ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
-        for model_name in base_model_list + model_list:
+
+        self.model_list = base_model_list + model_list
+
+    def rank_models(self, method='absolute'):
+        for model_name in self.model_list:
             pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
             pipeline.evaluate()
             self.pipelines[model_name] = pipeline
-
-    def rank_models(self, method='absolute'):
         reshaped_dfs = []
         for model_name, pipeline in self.pipelines.items():
             temp_df = pipeline.eval_df[['task', 'accuracy']].copy()
@@ -156,24 +159,105 @@ class EvalBenchmark:
         random_pipeline = EvalPipeline(model_name=f'RandomModel_{index}', cat=self.cat, sample_size=2)
         random_pipeline.human_evaluate()
 
+    def merge_human_evaluation(self):
+        merged_res = EvalPipeline(model_name='RandomModel', cat=self.cat, sample_size=2)
+        for task_name in merged_res.eval_list:
+            task = merged_res.eval_map('RandomModel', task_name, merged_res.sample_size)
+            task_0 = merged_res.eval_map('RandomModel_0', task_name, merged_res.sample_size)
+            task_1 = merged_res.eval_map('RandomModel_1', task_name, merged_res.sample_size)
+            for res, res0, res1 in zip(task.res_list, task_0.res_list, task_1.res_list):
+                if 'human_eval' not in res0 or 'human_eval' not in res1:
+                    continue
+                res['human_eval_0'], res['human_eval_1'] = res0['human_eval'], res1['human_eval']
+                if 'human_eval_score' in res0:
+                    res['human_eval_score_0'], res['human_eval_score_1'] = res0['human_eval_score'], res1['human_eval_score']
+                if res0['human_eval'] == res1['human_eval']:
+                    res['human_eval'] = res0['human_eval']
+                    if 'human_eval_score' in res0:
+                        res['human_eval_score'] = res0['human_eval_score']
+                else:
+                    res['human_eval'] = FAILED_TOKEN
+                    if 'human_eval_score' in res0:
+                        res['human_eval_score'] = FAILED_TOKEN
+            task.save()
+
     def aggregate_human_evaluation(self):
-        pass
+        merged_res = EvalPipeline(model_name='RandomModel', cat=self.cat, sample_size=2)
+        for task_name in merged_res.eval_list:
+            task = merged_res.eval_map('RandomModel', task_name, merged_res.sample_size)
+            res_list = [data for data in task.res_list if 'human_eval' in data and data['human_eval'] == FAILED_TOKEN]
+            if len(res_list) != 0:
+                interface = PreferenceInterface(data_list=res_list, mm_type=task_name[0])
+                interface.start()
+                idx = 0
+                for data in res_list:
+                    if interface.eval_list[idx] == 0:
+                        data['human_eval'] = data['human_eval_0']
+                        if 'human_eval_score' in data:
+                            data['human_eval_score'] = data['human_eval_score_0']
+                    else:
+                        data['human_eval'] = data['human_eval_1']
+                        if 'human_eval_score' in data:
+                            data['human_eval_score'] = data['human_eval_score_1']
+            task.save()
+
+    def compute_inter_annotator_correlation(self):
+        def normalize_text(text_list, language='english'):
+            return_list = []
+            for text in text_list:
+                if language == 'english':
+                    text = text.lower().strip()
+                    text = unicodedata.normalize('NFD', text)
+                    text = ''.join(char for char in text if unicodedata.category(char) != 'Mn')
+                    text = text.translate(str.maketrans('', '', string.punctuation))
+                return_list.append(text or FAILED_TOKEN)
+            return return_list
+
+        merged_res = EvalPipeline(model_name='RandomModel', cat=self.cat, sample_size=2)
+        corr_list = []
+        for task_name in merged_res.eval_list:
+            task = merged_res.eval_map('RandomModel', task_name, merged_res.sample_size)
+            if 'human_eval' not in task.res_list[0]:
+                corr_list.append(1.0)
+                continue
+            if 'human_eval_score' in task.res_list[0]:
+                annotator0_list = [data['human_eval_score_0'] for data in task.res_list if 'human_eval_score_0' in data]
+                annotator1_list = [data['human_eval_score_1'] for data in task.res_list if 'human_eval_score_1' in data]
+                corr_list.append(calculate_agreement(annotator0_list, annotator1_list))
+            else:
+                annotator0_list = [[data['human_eval_0']] if not isinstance(data['human_eval_0'], list) else data['human_eval_0'] for data in task.res_list]
+                annotator1_list = [[data['human_eval_1']] if not isinstance(data['human_eval_1'], list) else data['human_eval_1'] for data in task.res_list]
+                if isinstance(annotator0_list[0][0], str):
+                    import evaluate
+                    if any(re.findall(r'[\u4e00-\u9fff]', t) for tt in annotator0_list for t in tt) or any(re.findall(r'[\u4e00-\u9fff]', t) for tt in annotator1_list for t in tt):
+                        language = 'chinese'
+                    else:
+                        language = 'english'
+                    wer = evaluate.load('wer') if language == 'english' else evaluate.load('cer')
+                    corr_list.append(np.mean([1.0 - min(wer.compute(predictions=normalize_text(a), references=normalize_text(b)), 1.0)
+                                              for a, b in zip(annotator0_list, annotator1_list)]))
+                else:
+                    annotator0_cat = list(itertools.chain(*annotator0_list))
+                    annotator1_cat = list(itertools.chain(*annotator1_list))
+                    corr_list.append(calculate_agreement(annotator0_cat, annotator1_cat))
+        merged_res.eval_df['inter_annotator_correlation'] = corr_list
+        merged_res.eval_df.to_csv(f'./output/RandomModel/{self.cat}_eval.csv', index=False)
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    # parser.add_argument('--model_name', type=str, default='Gemini2', help='Name of the model.')
-    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    # args = parser.parse_args()
-    #
-    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    # pipeline.evaluate()
-
-    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
+    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    parser.add_argument('--model_name', type=str, default='SeedLlama', help='Name of the model.')
+    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
-    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.rank_models()
+    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    pipeline.evaluate()
+
+    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
+    # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    # args = parser.parse_args()
+    #
+    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    # benchmark.rank_models()

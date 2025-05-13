@@ -6,6 +6,8 @@ import io
 import sys
 from abc import abstractmethod
 
+import numpy as np
+
 from utils import *
 
 
@@ -325,3 +327,140 @@ class CalibratedLabelInterface(Interface):
         import gradio as gr
         self.is_finished.set()
         return gr.update(visible=True)
+
+
+class PreferenceInterface(Interface):
+    def __init__(self, mm_type='i',**kwargs):
+        self.mm_type = mm_type
+        self.eval_list = [FAILED_TOKEN] * len(kwargs['data_list'])
+        super().__init__(**kwargs)
+
+    def padding(self, start):
+        if self.mm_type == 'i':
+            return [Image.new('RGB', (600, 600), color='white')] * (self.max_len - start)
+        else:
+            return [(SAMPLE_RATE, np.zeros(SAMPLE_RATE))] * (self.max_len - start)
+
+    def construct_interface(self):
+        import gradio as gr
+        with gr.Blocks() as interface:
+            current_index = gr.State(0)
+            instruction = gr.Textbox(
+                value=self.data_list[0]['query'],
+                label="Instruction",
+                interactive=False
+            )
+            response = gr.Textbox(
+                value=self.data_list[0]['response'],
+                label="Response",
+                interactive=False
+            )
+            mm_com_list = []
+            if self.mm_type == 'i':
+                self.max_len = max(len(data['image_list']) for data in self.data_list)
+                for image in self.data_list[0]['image_list']:
+                    mm_com_list.append(gr.Image(
+                        value=image,
+                        visible=True,
+                        label="Image List",
+                        width=400,
+                        height=400
+                    ))
+                padding_list = self.padding(len(self.data_list[0]['image_list']))
+                for image in padding_list:
+                    mm_com_list.append(gr.Image(
+                        value=image,
+                        visible=True,
+                        label="Image List",
+                        width=400,
+                        height=400
+                    ))
+            else:
+                self.max_len = max(len(data['audio_list']) for data in self.data_list)
+                for audio in self.data_list[0]['audio_list']:
+                    mm_com_list.append(gr.Audio(
+                        value=(SAMPLE_RATE, audio),
+                        visible=True,
+                        label="Audio List",
+                        type="numpy"
+                    ))
+                padding_list = self.padding(len(self.data_list[0]['audio_list']))
+                for audio in padding_list:
+                    mm_com_list.append(gr.Audio(
+                        value=audio,
+                        visible=True,
+                        label="Audio List",
+                        type="numpy"
+                    ))
+            with gr.Row():
+                left_annotation = gr.Textbox(
+                    value=self.data_list[0]['human_eval_0'],
+                    label="Annotator 0",
+                    interactive=False
+                )
+                right_annotation = gr.Textbox(
+                    value=self.data_list[0]['human_eval_1'],
+                    label="Annotator 1",
+                    interactive=False
+                )
+            eval_instruction = gr.Textbox(
+                value='Which judgement do you support?',
+                label="Evaluation Instruction",
+                interactive=False
+            )
+            judgement_choice = gr.Radio(
+                choices=('Left (0)', 'Right (1)'),
+                label="Judgement"
+            )
+            with gr.Row():
+                next_button = gr.Button("Next", interactive=False)
+                prev_button = gr.Button("Prev", visible=False, interactive=False)
+            next_button.click(
+                self.update_interface,
+                inputs=[current_index, gr.State(1), judgement_choice],
+                outputs=[current_index, instruction, response, left_annotation,  right_annotation,
+                         judgement_choice, prev_button, next_button] + mm_com_list
+            )
+            prev_button.click(
+                self.update_interface,
+                inputs=[current_index, gr.State(-1), judgement_choice],
+                outputs=[current_index, instruction, response, left_annotation,  right_annotation,
+                         judgement_choice, prev_button, next_button] + mm_com_list
+            )
+
+            def update_buttons_state(judgement):
+                return (gr.update(interactive=(judgement is not None and len(judgement) > 0)),
+                        gr.update(interactive=(judgement is not None and len(judgement) > 0)))
+
+            judgement_choice.change(
+                update_buttons_state,
+                inputs=[judgement_choice],
+                outputs=[prev_button, next_button]
+            )
+            return interface
+
+    def update_interface(self, current_index, step, judgement):
+        import gradio as gr
+        self.eval_list[current_index] = ('Left (0)', 'Right (1)').index(judgement)
+        current_index += step
+        if current_index == len(self.data_list):
+            self.is_finished.set()
+            current_index -= 1
+
+        if self.mm_type == 'i':
+            mm_list = (self.data_list[current_index]['image_list']
+                       + self.padding(len(self.data_list[current_index]['image_list'])))
+        else:
+            mm_list = ([(SAMPLE_RATE, audio) for audio in self.data_list[current_index]['audio_list']]
+                       + self.padding(len(self.data_list[current_index]['audio_list'])))
+
+        return [
+            current_index,
+            self.data_list[current_index]['query'],
+            self.data_list[current_index]['response'],
+            self.data_list[current_index]['human_eval_0'],
+            self.data_list[current_index]['human_eval_1'],
+            None,
+            gr.update(visible=(current_index - 1) >= 0),
+            gr.update(visible=(current_index + 1) <= len(self.data_list))
+        ] + mm_list

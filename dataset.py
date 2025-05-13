@@ -1,4 +1,5 @@
 import json
+import re
 
 import cairosvg
 import os
@@ -154,5 +155,62 @@ def sample_from_star_vector():
         cairosvg.svg2png(bytestring=data, write_to=f'./seed_instruction/image/it_coherence_code_{i}.png', output_width=1024, output_height=1024)
 
 
+def create_huggingface_dataset():
+    from huggingface_hub import login, create_repo, upload_folder
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import glob
+    repo_id = 'UW-FMRL2/MMMG'
+    login(token=HF_KEY)
+    try:
+        create_repo(
+            repo_id=repo_id,
+            repo_type="dataset",
+            private=False
+        )
+    except:
+        pass
+    os.makedirs('./hf_dataset/test/', exist_ok=True)
+    os.makedirs('./hf_dataset/test/media/', exist_ok=True)
+
+    output_list = []
+    jsonl_list = glob.glob('./seed_instruction/*.jsonl')
+    for jsonl in jsonl_list:
+        task_name = re.search(r'\./seed_instruction/(.*).jsonl', jsonl).group(1)
+        with open(jsonl, 'r', encoding='utf-8') as file:
+            for line in file:
+                data = json.loads(line.strip())
+                new_data = {
+                    'category': task_name,
+                    'seed_instruction': data['instruction'],
+                    'instruction': data['instruction_para'],
+                    'image_0': None, 'image_1': None, 'ref_image_0': None, 'ref_image_1': None,
+                    'ref_image_2': None, 'ref_image_3': None, 'audio_0': None, 'ref_audio_0': None,
+                }
+                if 'image_list' in data:
+                    for idx, i in enumerate(data['image_list']):
+                        new_data[f'image_{idx}'] = open(f'./seed_instruction/image/{task_name}_{i}.png', 'rb').read()
+                if 'audio_list' in data:
+                    for idx, i in enumerate(data['audio_list']):
+                        new_data[f'audio_{idx}'] = open(f'./seed_instruction/audio/{task_name}_{i}.wav', 'rb').read()
+                if 'ref_image_list' in data:
+                    for idx, i in enumerate(data['ref_image_list']):
+                        new_data[f'ref_image_{idx}'] = open(f'./seed_instruction/image/{task_name}_{i}.png', 'rb').read()
+                if 'ref_audio_list' in data:
+                    for idx, i in enumerate(data['ref_image_list']):
+                        new_data[f'ref_audio_{idx}'] = open(f'./seed_instruction/audio/{task_name}_{i}.wav', 'rb').read()
+                output_list.append(new_data)
+    output_df = pd.DataFrame(output_list)
+    table = pa.Table.from_pandas(output_df)
+    pq.write_table(table, './hf_dataset/test.parquet')
+
+    upload_folder(
+        folder_path="./hf_dataset/",
+        repo_id=repo_id,
+        repo_type="dataset",
+        commit_message="Upload initial dataset files",
+    )
+
+
 if __name__ == '__main__':
-    pass
+    create_huggingface_dataset()

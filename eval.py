@@ -36,8 +36,6 @@ class EvalUnit:
                     query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
                 if 'audio_list' in inst:
                     query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
-                if 'text_list' in inst:
-                    query['text_list'] = inst['text_list']
                 query_list.append(query)
             self.res_list = model.generate(query_list)
         self.save(save_all=True)
@@ -105,7 +103,7 @@ class EvalUnit:
     def evaluate(self):
         pass
 
-    def human_evaluate(self, output_status=True):
+    def human_evaluate(self):
         pass
 
     def compute_accuracy(self, return_list=False):

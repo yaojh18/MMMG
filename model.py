@@ -84,8 +84,18 @@ class VoxInstruct(Model):
         """
         This model does not require a formated output list, thus can only be used for intermediate results.
         """
-        input_list = []
+        audio_list = []
+        for query in query_list:
+            if 'reference' in query and query['reference'] != '':
+                audio_list.append(librosa.load(query['reference'])[0])
         language = 'chinese' if re.search(r'[\u4e00-\u9fff]', query_list[0]['text']) is not None else 'english'
+        transcripts, _ = transcribe_speech(audio_list, language=language)
+        idx = 0
+        for query in query_list:
+            if 'reference' in query and query['reference'] != '':
+                query['reference_text'] = transcripts[idx]
+                idx += 1
+        input_list = []
         for idx, query in enumerate(query_list):
             if query['reference'] != '':
                 shutil.copy(query['reference'], f'./models/VoxInstruct/input/{idx}.wav')

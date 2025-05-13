@@ -2,6 +2,7 @@ import re
 import sys
 import itertools
 
+import librosa
 from torchvision.models.detection import image_list
 
 from model import *
@@ -16,9 +17,10 @@ class AudioAgent(Model):
     sound_model_name = 'BlankAudioModel'
     speech_model_name = 'BlankAudioModel'
     music_model_name = 'BlankAudioModel'
+    mllm = 'gemini-2.5-pro-preview-03-25'
 
-    def __init__(self, mllm='gemini-2.0-flash'):
-        self.mllm = GeminiModel(mllm, system_prompt=A_AGENT_PROMPT)
+    def __init__(self):
+        self.mllm = GeminiModel(self.mllm, system_prompt=A_AGENT_PROMPT)
         self.models = (eval(f'{self.sound_model_name}()'), eval(f'{self.speech_model_name}()'), eval(f'{self.music_model_name}()'))
 
     def generate(self, query_list):
@@ -48,7 +50,6 @@ class AudioAgent(Model):
                         audio_list.append({
                             "type": audio_prompt[0], "text": audio_prompt[1],
                             "style": "", "reference": query['audio_list'][ref_idx],
-                            "reference_text": query['text_list'][ref_idx]
                         })
                     else:
                         audio_list.append(FAILED_TOKEN)
@@ -58,7 +59,7 @@ class AudioAgent(Model):
                     if ref_idx < len(audio_list) and not isinstance(audio_list[ref_idx]["reference"], int):
                         audio_list.append({
                             "type": audio_prompt[0], "text": audio_prompt[1],
-                            "style": "", "reference": ref_idx, "reference_text": audio_list[ref_idx]['text']
+                            "style": "", "reference": ref_idx,
                         })
                     else:
                         audio_list.append(FAILED_TOKEN)
@@ -175,7 +176,7 @@ class GPTAgent(ImageAgent):
 
 
 class GeminiAgent(ImageAgent):
-    mllm_name = 'gemini-2.0-flash'
+    mllm_name = 'gemini-2.5-pro-preview-03-25'
     diffusion_name = 'Imagen3'
 
 
@@ -286,7 +287,7 @@ class GPT4oAgent(ImageAllAgent):
 
 
 class HybridAgent(ImageAllAgent):
-    mllm_name = 'gemini-2.0-flash'
+    mllm_name = 'gemini-2.5-pro-preview-03-25'
     diffusion_name = 'GPT4o'
 
 
@@ -410,12 +411,13 @@ class Gemini2(Model):
         res_list = []
 
         for query in tqdm(query_list):
-            retry_count = 5
+            retry_count = 4
             retry_interval = 10
             flag = False
             for _ in range(retry_count):
                 try:
-                    contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
+                    # contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
+                    contents = [query['instruction']]
                     images = query.get("image_list", [])
                     for img_path in images:
                         contents.append(Image.open(img_path))
@@ -725,39 +727,45 @@ class SpiritLM(Model):
 
         output_list = []
         for query in tqdm(query_list):
-            try:
-                interleaved_inputs = [GenerationInput(query['instruction'], content_type=ContentType.TEXT)]
-                if 'audio_list' in query:
-                    for audio in query['audio_list']:
-                        interleaved_inputs.append(
-                            GenerationInput(content=audio, content_type=ContentType.SPEECH)
-                        )
-                outputs = self.model.generate(
-                    output_modality=OutputModality.ARBITRARY,
-                    interleaved_inputs=interleaved_inputs,
-                    generation_config=GenerationConfig(
-                        temperature=0.5,
-                        top_p=0.95,
-                        max_new_tokens=256,
-                        do_sample=True,
-                    ),
-                )
-                response = ""
-                audio_list = []
-                for output in outputs:
-                    if output.content_type == ContentType.TEXT:
-                        response += output.content.strip()
-                    elif output.content_type == ContentType.SPEECH:
-                        audio_list.append(output.content)
+            flag = False
+            for _ in range(4):
+                try:
+                    interleaved_inputs = [GenerationInput(query['instruction'], content_type=ContentType.TEXT)]
+                    if 'audio_list' in query:
+                        for audio in query['audio_list']:
+                            interleaved_inputs.append(
+                                GenerationInput(content=audio, content_type=ContentType.SPEECH)
+                            )
+                    outputs = self.model.generate(
+                        output_modality=OutputModality.ARBITRARY,
+                        interleaved_inputs=interleaved_inputs,
+                        generation_config=GenerationConfig(
+                            temperature=0.5,
+                            top_p=0.95,
+                            max_new_tokens=256,
+                            do_sample=True,
+                        ),
+                    )
+                    response = ""
+                    audio_list = []
+                    for output in outputs:
+                        if output.content_type == ContentType.TEXT:
+                            response += output.content.strip()
+                        elif output.content_type == ContentType.SPEECH:
+                            audio_list.append(librosa.resample(output.content, orig_sr=16000, target_sr=SAMPLE_RATE))
 
-                output_list.append({
-                    "query": query,
-                    "response": response.strip(),
-                    "image_list": [],
-                    "audio_list": audio_list,
-                })
-            except Exception as e:
-                print(f"Error generating content for query: {query}. Error: {e}")
+                    output_list.append({
+                        "query": query,
+                        "response": response.strip(),
+                        "image_list": [],
+                        "audio_list": audio_list,
+                    })
+                    flag = True
+                    break
+                except Exception as e:
+                    print(f"Error generating content for query: {query}. Error: {e}")
+
+            if not flag:
                 output_list.append({
                     "query": query,
                     "response": "",

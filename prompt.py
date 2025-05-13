@@ -33,6 +33,9 @@ with open('./prompts/vlm_as_a_judge.txt', 'r', encoding='utf-8') as f:
 with open('prompts/i_interleaved_agent.txt', 'r', encoding='utf-8') as f:
     IT_AGENT_PROMPT = ''.join(f.readlines())
 
+with open('prompts/a_interleaved_agent.txt', 'r', encoding='utf-8') as f:
+    AT_AGENT_PROMPT = ''.join(f.readlines())
+
 with open('prompts/i_gen_edit_agent.txt', 'r', encoding='utf-8') as f:
     I_ALL_AGENT_PROMPT = ''.join(f.readlines())
 

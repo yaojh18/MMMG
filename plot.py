@@ -8,10 +8,16 @@ import textwrap
 def plot_model_radar(cat='i'):
     if cat == 'i':
         df = pd.read_csv('./figures/i_eval.csv')
-        selected_models = ['GPT Image', 'Gemini 2', 'Imagen 3', 'Dalle 3', 'SD 3.5']
+        selected_models = ['GPT Image', 'Gemini Image', 'Imagen 3', 'Dalle 3', 'SD 3.5']
     elif cat == 'a':
         df = pd.read_csv('./figures/a_eval.csv')
         selected_models = ['Stable Audio', 'AudioLDM 2', 'Make-An-Audio 2 (audio only)', 'MusicGen (music only)']
+    elif cat == 'it':
+        df = pd.read_csv('./figures/it_eval.csv')
+        selected_models = ['Gemini Image', 'Gemini 2.5 + Imagen 3', 'GPT-4o + GPT Image', 'Gemini 2.5 + GPT Image']
+    elif cat == 'at':
+        df = pd.read_csv('./figures/at_eval.csv')
+        selected_models = ['Gemini 2.5 + VoxInstruct', 'Gemini 2.5 + VoiceLDM']
     else:
         raise NotImplementedError
     categories = df['task'].tolist()
@@ -35,7 +41,7 @@ def plot_model_radar(cat='i'):
     for r in radii:
         ax.text(0, r, f'{r}', ha='left', va='center', fontsize=18)
     wrapped_categories = ['\n'.join(textwrap.wrap(cat, width=16)) for cat in categories]
-    ax.set_thetagrids(np.degrees(angles[:-1]), labels=wrapped_categories, fontsize=22)
+    ax.set_thetagrids(np.degrees(angles[:-1]), labels=wrapped_categories, fontsize=20)
     for r in radii:
         ax.plot(np.linspace(0, 2 * np.pi, 100), [r] * 100, '--', color='gray', linewidth=1)
     for angle in angles[:-1]:
@@ -48,11 +54,11 @@ def plot_model_radar(cat='i'):
         ax.plot(angles, values, linewidth=2.5, label=model, color=colors[idx])
         ax.fill(angles, values, color=colors[idx], alpha=0.2)
 
-    plt.legend(loc='lower right', bbox_to_anchor=(1.45, -0.1), fontsize=18, frameon=True,
-               facecolor='white', framealpha=0.8, edgecolor='lightgray')
+    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.20), fontsize=18, frameon=True,
+               facecolor='white', framealpha=0.8, edgecolor='lightgray', ncol=1)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f'./figures/{cat}_eval.png', bbox_inches='tight', dpi=600, pad_inches=0.1)
 
 
 if __name__ == '__main__':
-    plot_model_radar('i')
+    plot_model_radar('at')

@@ -274,18 +274,10 @@ def calculate_pearson(list1, list2):
     return np.corrcoef(list1, list2)[0, 1]
 
 
-def calculate_agreement(list1, list2):
-    # print(np.arange(len(list1))[np.array(list1) != np.array(list2)])
-    # return (np.array(list1) == np.array(list2)).sum() / len(list1)
-    list1 = np.array(list1)
-    list2 = np.array(list2)
-    if all(list1 == list2):
-        return 1.0
-    if np.std(list1) == 0:
-        list1 += np.random.normal(0, 1e-8, list1.shape)
-    if np.std(list2) == 0:
-        list2 += np.random.normal(0, 1e-8, list2.shape)
-    return np.corrcoef(list1, list2)[0, 1]
+def calculate_agreement(list1, list2, return_list=False):
+    if return_list:
+        return np.arange(len(list1))[np.array(list1) != np.array(list2)]
+    return (np.array(list1) == np.array(list2)).sum() / len(list1)
 
 
 def color_condition(image: Image.Image, condition: str):
@@ -323,18 +315,6 @@ def count_pixels(image, reference_color, max_distance=4):
     squared_distances = np.sqrt(np.sum((pixels - ref_color) ** 2, axis=1))
     count = np.sum(squared_distances <= max_distance_squared)
     return count / (image.shape[0] * image.shape[1])
-
-
-def symmetry_condition(image: Image.Image, condition: str):
-    if condition == "center":
-        ref_image = image.rotate(180)
-    elif condition == "horizontal":
-        ref_image = image.transpose(Image.FLIP_TOP_BOTTOM)
-    elif condition == "vertical":
-        ref_image = image.transpose(Image.FLIP_LEFT_RIGHT)
-    else:
-        raise NotImplementedError
-    return calculate_ssim(image, ref_image)
 
 
 def compute_clapscore_at(audio_list, text_list):
@@ -446,7 +426,7 @@ def transcribe_speech(audio_list, text_list=None, language='english'):
             text = processor.tokenizer._normalize(text)
             if language == 'chinese':
                 text = text.replace(' ', '')
-            wer_list.append(1.0 - wer.compute(references=[text], predictions=[transcription]))
+            wer_list.append(max(1.0 - wer.compute(references=[text], predictions=[transcription]), 0.0))
     return trans_list, wer_list
 
 
@@ -487,10 +467,10 @@ def calculate_pitch(audio, gender=None, inst=''):
 
     if 'pitch' in inst:
         if gender == 0:
-            pitch_s = min(140.0, max(182.0, pitch))
+            pitch_s = max(140.0, min(182.0, pitch))
             pitch_s = float(inst['pitch'] == 'high') * (pitch_s - 140.0) / 42.0 + float(inst['pitch'] == 'low') * (182.0 - pitch_s) / 42.0
         else:
-            pitch_s = min(236.0, max(278.0, pitch))
+            pitch_s = max(236.0, min(278.0, pitch))
             pitch_s = float(inst['pitch'] == 'high') * (pitch_s - 236.0) / 42.0 + float(inst['pitch'] == 'low') * (278.0 - pitch_s) / 42.0
     else:
         pitch_s = FAILED_TOKEN
@@ -501,10 +481,10 @@ def calculate_speed(audio, transcript, inst='', language='english'):
     speed = ((len(transcript.split(' ')) if language == 'english' else len(transcript)) * SAMPLE_RATE * 60 / len(librosa.effects.trim(audio)[0]))
     if 'speed' in inst:
         if language == 'english':
-            speed_s = min(156.0, max(180.0, speed))
+            speed_s = max(156.0, min(180.0, speed))
             speed_s = float(inst['speed'] == 'high') * (speed_s - 156.0) / 24.0 + float(inst['speed'] == 'low') * (180.0 - speed_s) / 24.0
         else:
-            speed_s = min(232.0, max(272.0, speed))
+            speed_s = max(232.0, min(272.0, speed))
             speed_s = float(inst['speed'] == 'high') * (speed_s - 232.0) / 40.0 + float(inst['speed'] == 'low') * (272.0 - speed_s) / 40.0
     else:
         speed_s = FAILED_TOKEN
@@ -518,6 +498,8 @@ def calculate_volume(audio):
 
 
 def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
+    if len(audio_list) == 0:
+        return []
     from transformers import Wav2Vec2FeatureExtractor, WavLMForXVector
     feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained('microsoft/wavlm-base-sv')
     model = WavLMForXVector.from_pretrained('microsoft/wavlm-base-sv').to('cuda')
@@ -549,25 +531,30 @@ def text_instruction_following_verify(text_list, instruction_list):
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     for text, inst in zip(text_list, instruction_list):
         text = text.lower().strip()
-        if inst[0] == 'exact_match':
-            output_list.append(float(text == processor.tokenizer._normalize(inst[1])))
-        elif inst[0] == 'keyword_include':
-            output_list.append(float(all(keyword in text for keyword in inst[1:])))
-        elif inst[0] == 'keyword_exclude':
-            output_list.append(1.0 - float(any(keyword in text for keyword in inst[1:])))
-        elif inst[0] == 'keyword_count':
-            count = len(re.findall(re.escape(inst[1]), text))
-            output_list.append(eval(f'float(count {inst[2]})'))
-        elif inst[0] == 'length_word':
-            words = word_tokenize(text)
-            count = len([word for word in words if word.isalnum() or "'" in word])
-            output_list.append(eval(f'float(count {inst[1]})'))
-        elif inst[0] == 'start':
-            output_list.append(float(text.startswith(processor.tokenizer._normalize(inst[1]))))
-        elif inst[0] == 'end':
-            output_list.append(float(text.endswith(processor.tokenizer._normalize(inst[1]))))
-        else:
-            raise NotImplementedError
+        if isinstance(inst[0], str):
+            inst = [inst]
+        flag = True
+        for i in inst:
+            if i[0] == 'exact_match':
+                flag = text == processor.tokenizer._normalize(i[1]) and flag
+            elif i[0] == 'keyword_include':
+                flag = all(keyword in text for keyword in i[1:]) and flag
+            elif i[0] == 'keyword_exclude':
+                flag = not any(keyword in text for keyword in i[1:]) and flag
+            elif i[0] == 'keyword_count':
+                count = len(re.findall(re.escape(i[1]), text))
+                flag = eval(f'count {i[2]}') and flag
+            elif i[0] == 'length_word':
+                words = word_tokenize(text)
+                count = len([word for word in words if word.isalnum() or "'" in word])
+                flag = eval(f'count {i[1]}') and flag
+            elif i[0] == 'start':
+                flag = text.startswith(processor.tokenizer._normalize(i[1])) and flag
+            elif i[0] == 'end':
+                flag = text.endswith(processor.tokenizer._normalize(i[1])) and flag
+            else:
+                raise NotImplementedError
+        output_list.append(float(flag))
     return output_list
 
 

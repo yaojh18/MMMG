@@ -95,7 +95,7 @@ class IObject(EvalUnit):
     def compute_correlation(self):
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class IObjectInclude(IObject):
@@ -135,7 +135,7 @@ class IObjectInclude(IObject):
             return super().compute_correlation()
         human_eval_list = [res['human_eval'] for res in self.res_list]
         model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class IObjectAttribute(IObjectInclude):
@@ -169,7 +169,7 @@ class IObjectExclude(IObjectInclude):
             return super().compute_correlation()
         human_eval_list = [res['human_eval'] for res in self.res_list]
         model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class IObjectCoT(IObjectInclude):
@@ -257,7 +257,7 @@ class ISpacial(EvalUnit):
     def compute_correlation(self):
         human_eval_list = [np.prod(res['human_eval']) for res in self.res_list]
         model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class ISpacialAbsolute(ISpacial):
@@ -446,11 +446,13 @@ class IOCR(EvalUnit):
     def _compute_correlation(self, label_list, model_eval_list, human_eval_list):
         import evaluate
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
+        model_wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
+                          for model_eval, label in zip(model_eval_list, label_list)]
         human_wer_list = [1.0 - min(wer.compute(predictions=human_eval, references=label), 1.0)
-                    for human_eval, label in zip(human_eval_list, label_list)]
+                          for human_eval, label in zip(human_eval_list, label_list)]
         correlated_wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=human_eval), 1.0)
-                    for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
-        return np.mean(human_wer_list), np.mean(correlated_wer_list)
+                               for model_eval, human_eval in zip(model_eval_list, human_eval_list)]
+        return np.mean(correlated_wer_list), calculate_pearson(model_wer_list, human_wer_list)
 
 
 class IOCRTwo(IOCR):
@@ -630,6 +632,10 @@ class IOCRMultiLingual(EvalUnit):
         self.chinese = IOCRChinese(model_name=model_name, sample_size=sample_size)
         self.german = IOCRGerman(model_name=model_name, sample_size=sample_size)
 
+    @property
+    def res_list(self):
+        return self.chinese.res_list + self.german.res_list
+
     def evaluate(self):
         self.chinese.evaluate()
         self.german.evaluate()
@@ -645,6 +651,10 @@ class IOCRMultiLingual(EvalUnit):
         chines_cor = self.chinese.compute_correlation()
         german_cor = self.german.compute_correlation()
         return (chines_cor[0] + german_cor[0]) / 2.0, (chines_cor[1] + german_cor[1]) / 2.0
+
+    def save(self, save_all=False):
+        self.chinese.save(save_all=save_all)
+        self.german.save(save_all=save_all)
 
 
 class IFormatBackground(EvalUnit):
@@ -709,18 +719,6 @@ class IFormatBackground(EvalUnit):
     def compute_accuracy(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
         return np.mean(auto_eval_list)
-
-
-class IFormatSymmetric(IFormatBackground):
-    inst_name = 'i_format_symmetric'
-
-    def evaluate(self):
-        for data, inst in zip(self.res_list, self.inst_list):
-            if len(data['image_list']) != 1:
-                data['auto_eval'] = 0.0
-                continue
-            data['auto_eval'] = symmetry_condition(data['image_list'][0], inst['symmetry_type'])
-        self.save()
 
 
 class IFormatBorder(IFormatBackground):
@@ -826,7 +824,6 @@ class IEdit(EvalUnit):
 
 class IEditText(IEdit, IOCR):
     inst_name = 'i_edit_text'
-    vlm = 'gemini'
 
 
 class IEditObjectAdd(IEdit, IObjectInclude):
@@ -835,11 +832,11 @@ class IEditObjectAdd(IEdit, IObjectInclude):
 
 class IEditObjectRemove(IEdit, IObjectExclude):
     inst_name = 'i_edit_object_remove'
-    vlm = 'gemini'
 
 
 class IEditObjectModify(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_modify'
+    vlm = 'gemini'
 
 
 class IEditAdd(EvalUnit):
@@ -878,9 +875,4 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IOCRTwo(model_name='Gemini2', sample_size=4)
-    task.evaluate()
-    print(task.compute_accuracy())
-    task = IOCRMultiLingual(model_name='Gemini2', sample_size=4)
-    task.evaluate()
-    print(task.compute_accuracy())
+    pass

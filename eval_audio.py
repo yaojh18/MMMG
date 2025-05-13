@@ -1,8 +1,8 @@
 import librosa
+import numpy as np
 from scipy.signal import find_peaks
 from scipy.stats import linregress
 from libs.SpeechGenderCls import get_gender
-from matplotlib import pyplot as plt
 
 from eval import *
 
@@ -81,7 +81,7 @@ class ASound(EvalUnit):
 
         model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
         human_eval_list = [np.mean(human_eval) for human_eval in human_eval_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class ASoundBeginEnd(ASound):
@@ -260,13 +260,13 @@ class ASpeechAttribute(EvalUnit):
 
     def compute_accuracy(self):
         wer_list = [data['wer'] for data in self.res_list]
-        model_eval_list = [np.mean([me for me in data['auto_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
+        model_eval_list = [np.prod([me for me in data['auto_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
         return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
 
     def compute_correlation(self):
         model_eval_list = [res['auto_eval_score'][0] for res in self.res_list if res['human_eval'] <= 1]
         human_eval_list = [res['human_eval_score'] for res in self.res_list if res['human_eval'] <= 1]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class ASpeechChinese(ASpeechAttribute):
@@ -350,7 +350,7 @@ class ASpeechImitate(EvalUnit):
         # threshold = find_optimal_threshold(model_eval_list, human_eval_list)
 
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class ASpeechModify(EvalUnit):
@@ -382,6 +382,10 @@ class ASpeechModify(EvalUnit):
     def compute_accuracy(self):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
         return np.mean(auto_eval_list)
+
+
+class ASpeechConstraint(ASpeechModify):
+    inst_name = 'a_speech_constraint'
 
 
 class AMusicAttribute(EvalUnit):
@@ -508,6 +512,10 @@ class AMusicInstrument(EvalUnit):
     def __init__(self, model_name: str, sample_size=4):
         self.eval_unit = AMusicAttribute(model_name=model_name, sample_size=sample_size)
 
+    @property
+    def res_list(self):
+        return self.eval_unit.res_list
+
     def evaluate(self):
         self.eval_unit.evaluate_instrument()
 
@@ -527,12 +535,19 @@ class AMusicInstrument(EvalUnit):
         # threshold = find_optimal_threshold(model_eval_list, human_eval_list)
 
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
+
+    def save(self, save_all=False):
+        self.eval_unit.save(save_all=save_all)
 
 
 class AMusicTempo(EvalUnit):
     def __init__(self, model_name: str, sample_size=4):
         self.eval_unit = AMusicAttribute(model_name=model_name, sample_size=sample_size)
+
+    @property
+    def res_list(self):
+        return self.eval_unit.res_list
 
     def evaluate(self):
         self.eval_unit.evaluate_tempo()
@@ -540,6 +555,9 @@ class AMusicTempo(EvalUnit):
     def compute_accuracy(self):
         auto_eval_list = [data['auto_eval_score'] for data in self.eval_unit.res_list if 'auto_eval_score' in data]
         return np.mean(auto_eval_list)
+
+    def save(self, save_all=False):
+        self.eval_unit.save(save_all=save_all)
 
 
 class AMusicIntensity(EvalUnit):
@@ -570,6 +588,7 @@ class AMusicIntensity(EvalUnit):
             data['auto_eval'] = float(trend == inst['intensity'][1])
 
             # # Visualize
+            # from matplotlib import pyplot as plt
             # plt.plot(times, norm_intensity * 100.0, label='Intensity', alpha=0.6)
             # plt.plot(times[peaks], norm_intensity[peaks] * 100.0, label='Peaks', alpha=0.6)
             # plt.xlabel('Time (s)')
@@ -661,7 +680,7 @@ class AMusicExclude(EvalUnit):
         # threshold = find_optimal_threshold([1.0 - m for m in model_eval_list], human_eval_list)
 
         model_eval_list = [float(model_eval < threshold) for model_eval in model_eval_list]
-        return np.mean(human_eval_list), calculate_agreement(model_eval_list, human_eval_list)
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 if __name__ == '__main__':
