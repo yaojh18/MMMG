@@ -1,7 +1,5 @@
 import itertools
 
-import numpy as np
-
 from eval import EvalUnit
 from prompt import *
 from interface import *

@@ -3,8 +3,6 @@ import os
 import shutil
 import string
 
-import numpy as np
-
 from model import Model
 from utils import *
 

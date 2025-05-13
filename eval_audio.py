@@ -1,5 +1,3 @@
-import librosa
-import numpy as np
 from scipy.signal import find_peaks
 from scipy.stats import linregress
 from libs.SpeechGenderCls import get_gender

@@ -3,8 +3,6 @@ import shutil
 import random
 from abc import abstractmethod
 
-import numpy as np
-
 from utils import *
 
 

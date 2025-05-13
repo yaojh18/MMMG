@@ -1,6 +1,3 @@
-import json
-import re
-
 import cairosvg
 import os
 import random

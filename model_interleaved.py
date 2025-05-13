@@ -1,9 +1,4 @@
-import re
-import sys
 import itertools
-
-import librosa
-from torchvision.models.detection import image_list
 
 import sys
 sys.path.append("/home/ubuntu/MM-IFEval/models/")
