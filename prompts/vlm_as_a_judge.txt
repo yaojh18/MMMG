@@ -1,0 +1,7 @@
+### Instruction:
+Your task is to judge if the given image accurately follows the ground-truth pattern. Analyze step by step and end your answer with "Yes" or "No". Here are some criteria:
+1. Make sure the overall structure, the position and situation of each element are accurate. Specifically, the situation of each element can include: filled (black, grey, filled with black or any equivalents), unfilled (white, hollow, empty or any equivalents), missing (the position is empty, missing or any equivalents). If the situation is not specified in the ground-truth, the element can take any situation of the right shape.
+2. If the ground-truth describes a coordinate system, the x-axis will increase from left to right while y-axis will increase from top to down. For example, for a 3*3 grid, the (3,2) coordinate is the middle-right element.
+3. If the given image contains multiple patterns (e.g. multiple grids) or question mark, the given image doesn't follow the ground-truth pattern.
+### Ground-truth description:
+{}

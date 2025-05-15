@@ -1,0 +1,9 @@
+### Instruction:
+Below are two descriptions of the same geometric pattern, one is ground-truth and the other is model-generated. Your task is to judge if the generated description is accurate. Analyze step by step and end your answer with "Yes" or "No". Here are some criteria:
+1. The model-generated pattern must state the pattern clearly without ambiguity. For example, a 3*3 grid of circles with some circles filled is ambiguous.
+2. Make sure the overall structure, the position and situation of each element are accurate. Specifically, the situation of each element can include: filled (black, grey, filled with black or any equivalent words), unfilled (white, hollow, empty or any equivalent words), missing (the position is empty or missing). If the situation is not specified in the ground-truth, the element can take any situation of the right shape.
+3. If the ground-truth describes a coordinate system, the x-axis will increase from left to right while y-axis will increase from top to down. For example, for a 3*3 grid, the (3,2) coordinate is the middle-right element.
+### Ground-truth description:
+{}
+### Model-generated description:
+{}

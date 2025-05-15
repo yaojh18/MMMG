@@ -1,0 +1,12 @@
+openai
+librosa
+soundfile
+google-genai
+scikit-image
+scikit-learn
+transformers
+gradio
+evaluate
+scipy
+dreamsim
+nltk

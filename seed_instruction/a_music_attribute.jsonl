@@ -1,0 +1,20 @@
+{"instruction": "Generate a powerful drum sequence.", "instrument": "drums", "instruction_para": "Create an impactful drum sequence."}
+{"instruction": "Generate a haunting flute melody.", "instrument": "flute", "instruction_para": "Create a ghostly-sounding flute melody."}
+{"instruction": "Generate an expressive guitar solo.", "instrument": "guitar", "instruction_para": "Create a guitar solo that conveys strong emotion and expression."}
+{"instruction": "Generate a smooth saxophone improvisation.", "instrument": "saxophone", "instruction_para": "Create a seamless saxophone improvisation."}
+{"instruction": "Generate a lively accordion tune.", "instrument": "accordion", "instruction_para": "Create an upbeat accordion melody."}
+{"instruction": "Generate a high-energy drum and bass track, 160 BPM", "tempo": 160, "instruction_para": "Create a high-energy drum and bass track at 160 BPM."}
+{"instruction": "Generate a groovy and funky jazz tune, 110 BPM", "tempo": 110, "instruction_para": "Create a groovy, funky jazz track at 110 BPM."}
+{"instruction": "Generate a cinematic orchestral buildup, 80 BPM", "tempo": 80, "instruction_para": "Create a cinematic orchestral buildup at 80 BPM."}
+{"instruction": "Generate a dark and aggressive techno beat, 140 BPM", "tempo": 140, "instruction_para": "Create a dark, aggressive techno beat at 140 BPM."}
+{"instruction": "Generate a relaxed lo-fi hip-hop beat, 100 BPM", "tempo": 100, "instruction_para": "Create a laid-back lo-fi hip-hop beat at 100 BPM."}
+{"instruction": "Generate a smooth, mellow jazz saxophone piece at 65 BPM.", "instrument": "saxophone", "tempo": 65, "instruction_para": "Create a smooth and mellow jazz saxophone track with a tempo of 65 BPM."}
+{"instruction": "Generate a mellow, pastoral classical flute tune at 90 BPM.", "instrument": "flute", "tempo": 90, "instruction_para": "Create a gentle, pastoral-style classical flute melody at 90 BPM."}
+{"instruction": "Generate a majestic, grand classical flute composition at 145 BPM.", "instrument": "flute", "tempo": 145, "instruction_para": "Create a majestic and grand classical flute composition with a tempo of 145 BPM."}
+{"instruction": "Generate an enchanting, lyrical classical sonata with a flute at 90 BPM.", "instrument": "flute", "tempo": 90, "instruction_para": "Compose a captivating, lyrical classical sonata featuring a flute, set at 90 BPM."}
+{"instruction": "Generate a foot-tapping, down-home country guitar melody at 120 BPM.", "instrument": "guitar", "tempo": 120, "instruction_para": "Create a lively, toe-tapping country guitar melody at 120 BPM."}
+{"instruction": "Generate a charming, rustic country accordion tune at 100 BPM.", "instrument": "accordion", "tempo": 100, "instruction_para": "Create a charming and rustic country accordion melody at 100 BPM."}
+{"instruction": "Generate an electrifying, funky disco saxophone groove at 130 BPM.", "instrument": "saxophone", "tempo": 130, "instruction_para": "Create a high-energy, funky disco saxophone groove at 130 BPM."}
+{"instruction": "Generate a vibrant, pulsating disco drum track at 125 BPM.", "instrument": "drums", "tempo": 125, "instruction_para": "Create a lively, rhythmic disco drum track at 125 BPM."}
+{"instruction": "Generate a heavy, energetic pop accordion anthem at 150 BPM.", "instrument": "accordion", "tempo": 150, "instruction_para": "Create a powerful, high-energy pop anthem featuring accordion at 150 BPM."}
+{"instruction": "Generate a pounding, rhythmic metal drum beat at 110 BPM.", "instrument": "drums", "tempo": 110, "instruction_para": "Create a heavy, rhythmic metal drum beat at 110 BPM."}
