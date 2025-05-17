@@ -1,3 +1,5 @@
+import numpy as np
+
 from eval_image import *
 from eval_audio import *
 from eval_interleaved import *
@@ -71,6 +73,23 @@ class EvalPipeline:
             self.eval_df.loc[index, ['agreement', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
 
+    def compute_ci(self):
+        self.eval_df['ci'] = [None] * len(self.eval_df)
+        all_score = []
+        for index, row in self.eval_df.iterrows():
+            task_name = row['task']
+            task = self.eval_map(self.model_name, task_name, self.sample_size)
+            eval_list = task.compute_accuracy(return_list=True)
+            eval_list = np.array(eval_list).reshape(len(eval_list) // self.sample_size, self.sample_size)
+            eval_score = np.mean(eval_list, axis=0)
+            var = np.std(eval_score, ddof=1) / np.sqrt(self.sample_size) * 1.96
+            self.eval_df.loc[index, 'ci'] = var
+            all_score.append(eval_score)
+        all_score = np.mean(all_score, axis=0)
+        var = np.std(all_score, ddof=1) / np.sqrt(self.sample_size) * 1.96
+        self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+        return var
+
 
 class EvalBenchmark:
     def __init__(self, model_list=[], cat='i', sample_size=4):
@@ -94,13 +113,16 @@ class EvalBenchmark:
         self.model_list = base_model_list + model_list
 
     def rank_models(self, method='absolute'):
+        # ci_map = {}
         for model_name in self.model_list:
             pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
             pipeline.evaluate()
+            # ci_map[model_name] = pipeline.compute_ci()
             self.pipelines[model_name] = pipeline
         reshaped_dfs = []
         for model_name, pipeline in self.pipelines.items():
             temp_df = pipeline.eval_df[['task', 'accuracy']].copy()
+            # temp_df.loc[len(temp_df)] = ['ci', ci_map[model_name]]
             temp_df.rename(columns={'accuracy': model_name}, inplace=True)
             reshaped_dfs.append(temp_df)
 
@@ -245,19 +267,19 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='SeedLlama', help='Name of the model.')
-    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    args = parser.parse_args()
-
-    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    pipeline.evaluate()
-
-    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    # parser.add_argument('--model_name', type=str, default='Dalle3', help='Name of the model.')
+    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
-    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    # benchmark.rank_models()
+    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    # pipeline.evaluate()
+
+    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
+    parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    args = parser.parse_args()
+
+    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    benchmark.rank_models()

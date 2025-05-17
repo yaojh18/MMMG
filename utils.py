@@ -283,7 +283,7 @@ def calculate_agreement(list1, list2, return_list=False):
 def color_condition(image: Image.Image, condition: str):
     img_array = np.array(image)
     avg_color = tuple(np.mean(img_array.reshape(-1, 3), axis=0).astype(int))
-    color = {
+    color = np.array({
         "green": (0, 128, 0),
         "blue": (0, 0, 255),
         "yellow": (255, 255, 0),
@@ -294,11 +294,11 @@ def color_condition(image: Image.Image, condition: str):
         "orange": (255, 128, 0),
         "purple": (128, 0, 128),
         "cyan": (0, 255, 255),
-    }[condition]
+    }[condition])
     avg_color_hsv = colorsys.rgb_to_hsv(*avg_color)
     color_hsv = colorsys.rgb_to_hsv(*color)
     if condition == "white" or condition == "black":
-        if abs(avg_color_hsv[2] - color_hsv[2]) > 38:
+        if np.linalg.norm(color - avg_color) > 38.4:
             return 0.0, avg_color
     else:
         if 0.15 < abs(avg_color_hsv[0] - color_hsv[0]) < 0.85:

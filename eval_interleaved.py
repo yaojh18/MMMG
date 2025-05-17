@@ -56,9 +56,9 @@ class IConsistencySemantic(EvalUnit):
 
     def compute_accuracy(self, return_list=False):
         model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
-        if not return_list:
-            return np.mean(model_eval_list)
-        return model_eval_list
+        if return_list:
+            return model_eval_list
+        return np.mean(model_eval_list)
 
     def compute_correlation(self):
         human_eval_list = [res['human_eval'] for res in self.res_list]
@@ -88,8 +88,10 @@ class IConsistency3DObject(EvalUnit):
                 data['auto_eval'] = [calculate_ssim(img1, img2) for img1, img2 in zip(data['image_list'], inst['ref_image_list'])]
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [np.mean(data['auto_eval']) for data in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 
@@ -181,10 +183,13 @@ class AConsistencyConversation(EvalUnit):
             data['human_eval'] = [1.0 - interface.eval_list[i] if i != FAILED_TOKEN else 0.0 for i in data['human_eval']]
         self.save()
 
-    def compute_accuracy(self, threshold=0.93):
+    def compute_accuracy(self, threshold=0.93, return_list=False):
         auto_eval_list = [np.mean(data['auto_eval']) for data in self.res_list]
         model_eval_list = [np.prod([me > threshold for me in data['model_eval']]) for data in self.res_list]
-        return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
+        combined_list = [a * m for a, m in zip(auto_eval_list, model_eval_list)]
+        if return_list:
+            return combined_list
+        return np.mean(combined_list)
 
     def compute_correlation(self, threshold=0.93):
         model_eval_list = [res['model_eval'] for res in self.res_list]
@@ -224,8 +229,10 @@ class IStructure(EvalUnit):
             data['auto_eval'] = float(mm_list in inst['order'])
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 
@@ -301,8 +308,10 @@ class ITCoherence(EvalUnit):
     def human_process_response(data, responses):
         pass
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
+        if return_list:
+            return model_eval_list
         return np.mean(model_eval_list)
 
     def compute_correlation(self):
@@ -572,13 +581,15 @@ class ITCoherenceOCR(ITCoherence, IOCR):
                 data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip()
         self.save()
 
-    def compute_accuracy(self):
-        label_list = [[self.normalize_text(res['text'])] for res in self.res_list if 'text' in res]
-        model_eval_list = [[self.normalize_text(res['model_eval'])] for res in self.res_list if 'text' in res]
-        acc = self._compute_accuracy(label_list, model_eval_list)
-        if np.isnan(acc):
-            acc = 0.0
-        return acc * len(label_list) / len(self.res_list)
+    def compute_accuracy(self, return_list=False):
+        label_list = [[self.normalize_text(res['text']) if 'text' in res else FAILED_TOKEN] for res in self.res_list]
+        model_eval_list = [[self.normalize_text(res['model_eval']) if 'text' in res else FAILED_TOKEN] for res in self.res_list]
+        mask_list = ['text' in res for res in self.res_list]
+        wer_list = self._compute_accuracy(label_list, model_eval_list, return_list=True)
+        wer_list = [wer if mask else 0.0 for mask, wer in zip(mask_list, wer_list)]
+        if return_list:
+            return wer_list
+        return np.mean(wer_list)
 
     def compute_correlation(self):
         label_list = [[self.normalize_text(res['text'] if 'text' in res else '')] for res in self.res_list]
@@ -673,8 +684,10 @@ class ITCoherenceCode(ITCoherenceColor):
     def human_process_response(data, responses):
         data['human_eval'] = float(responses[data['human_eval']] == 0)
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [res['auto_eval'] * res['model_eval'] for res in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 

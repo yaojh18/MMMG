@@ -41,7 +41,7 @@ def plot_model_radar(cat='i'):
     for r in radii:
         ax.text(0, r, f'{r}', ha='left', va='center', fontsize=18)
     wrapped_categories = ['\n'.join(textwrap.wrap(cat, width=16)) for cat in categories]
-    ax.set_thetagrids(np.degrees(angles[:-1]), labels=wrapped_categories, fontsize=20)
+    ax.set_thetagrids(np.degrees(angles[:-1]), labels=wrapped_categories, fontsize=18)
     for r in radii:
         ax.plot(np.linspace(0, 2 * np.pi, 100), [r] * 100, '--', color='gray', linewidth=1)
     for angle in angles[:-1]:
@@ -54,11 +54,11 @@ def plot_model_radar(cat='i'):
         ax.plot(angles, values, linewidth=2.5, label=model, color=colors[idx])
         ax.fill(angles, values, color=colors[idx], alpha=0.2)
 
-    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.20), fontsize=18, frameon=True,
-               facecolor='white', framealpha=0.8, edgecolor='lightgray', ncol=1)
+    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.25), fontsize=18, frameon=True,
+               facecolor='white', framealpha=0.8, edgecolor='lightgray', ncol=3)
     plt.tight_layout()
     plt.savefig(f'./figures/{cat}_eval.png', bbox_inches='tight', dpi=600, pad_inches=0.1)
 
 
 if __name__ == '__main__':
-    plot_model_radar('at')
+    plot_model_radar('i')

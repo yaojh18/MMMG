@@ -87,9 +87,9 @@ class IObject(EvalUnit):
 
     def compute_accuracy(self, return_list=False):
         model_eval_list = [np.mean(res['model_eval']) for res in self.res_list]
-        if not return_list:
-            return np.mean(model_eval_list)
-        return model_eval_list
+        if return_list:
+            return model_eval_list
+        return np.mean(model_eval_list)
 
     def compute_correlation(self):
         human_eval_list = [np.mean(res['human_eval']) for res in self.res_list]
@@ -125,9 +125,9 @@ class IObjectInclude(IObject):
         if self.inst_name != 'i_object_include':
             return super().compute_accuracy(return_list)
         model_eval_list = [float(res['model_eval'][0] == 1.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
-        if not return_list:
-            return np.mean(model_eval_list)
-        return model_eval_list
+        if return_list:
+            return model_eval_list
+        return np.mean(model_eval_list)
 
     def compute_correlation(self):
         if self.inst_name != 'i_object_include':
@@ -159,9 +159,9 @@ class IObjectExclude(IObjectInclude):
         if self.inst_name != 'i_object_exclude':
             return super().compute_accuracy(return_list)
         model_eval_list = [float(res['model_eval'][0] == 0.0) * np.mean(res['model_eval'][1:]) for res in self.res_list]
-        if not return_list:
-            return np.mean(model_eval_list)
-        return model_eval_list
+        if return_list:
+            return model_eval_list
+        return np.mean(model_eval_list)
 
     def compute_correlation(self):
         if self.inst_name != 'i_object_exclude':
@@ -249,8 +249,10 @@ class ISpacial(EvalUnit):
                                   else 0.0 for idx in data['human_eval']]
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         model_eval_list = [np.prod(res['model_eval']) for res in self.res_list]
+        if return_list:
+            return model_eval_list
         return np.mean(model_eval_list)
 
     def compute_correlation(self):
@@ -438,9 +440,9 @@ class IOCR(EvalUnit):
         wer = evaluate.load('wer') if self.language == 'english' else evaluate.load('cer')
         wer_list = [1.0 - min(wer.compute(predictions=model_eval, references=label), 1.0)
                     for model_eval, label in zip(model_eval_list, label_list)]
-        if not return_list:
-            return np.mean(wer_list)
-        return wer_list
+        if return_list:
+            return wer_list
+        return np.mean(wer_list)
 
     def _compute_correlation(self, label_list, model_eval_list, human_eval_list):
         import evaluate
@@ -540,10 +542,10 @@ class IOCRTwo(IOCR):
                 data['human_eval'] = ['', '']
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
         model_eval_list = [[self.normalize_text(t) for t in res['model_eval']] for res in self.res_list]
-        return self._compute_accuracy(label_list, model_eval_list)
+        return self._compute_accuracy(label_list, model_eval_list, return_list)
 
     def compute_correlation(self):
         label_list = [[self.normalize_text(t) for t in inst['text'].values()] for inst in self.inst_list]
@@ -614,10 +616,10 @@ class IOCRChinese(IOCR):
             data['human_eval'] = interface.eval_list[data['human_eval']].lower().strip() if data['human_eval'] != FAILED_TOKEN else ''
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         label_list = [[inst['text'] or FAILED_TOKEN] for inst in self.inst_list]
         model_eval_list = [[res['model_eval_score'] or FAILED_TOKEN] for res in self.res_list]
-        return self._compute_accuracy(label_list, model_eval_list)
+        return self._compute_accuracy(label_list, model_eval_list, return_list)
 
     def compute_correlation(self):
         label_list = [[inst['text'] or FAILED_TOKEN] for inst in self.inst_list]
@@ -643,8 +645,12 @@ class IOCRMultiLingual(EvalUnit):
         self.chinese.human_evaluate()
         self.german.human_evaluate()
 
-    def compute_accuracy(self):
-        return (self.chinese.compute_accuracy() + self.german.compute_accuracy()) / 2.0
+    def compute_accuracy(self, return_list=False):
+        chinese_acc = self.chinese.compute_accuracy(return_list)
+        germany_acc = self.german.compute_accuracy(return_list)
+        if return_list:
+            return chinese_acc + germany_acc
+        return (chinese_acc + germany_acc) / 2.0
 
     def compute_correlation(self):
         chines_cor = self.chinese.compute_correlation()
@@ -715,8 +721,10 @@ class IFormatBackground(EvalUnit):
             data['auto_eval'] = max(0.0, data['auto_eval'] - penalty)
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 
@@ -812,10 +820,14 @@ class IEdit(EvalUnit):
             data['image_list'][0] = image.crop(bbox)
         super().human_evaluate()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         model_eval_list = super().compute_accuracy(return_list=True)
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
-        return np.mean([a * m for a, m in zip(auto_eval_list, model_eval_list)])
+
+        combined_list = [a * m for a, m in zip(auto_eval_list, model_eval_list)]
+        if return_list:
+            return combined_list
+        return np.mean(combined_list)
 
     def compute_correlation(self):
         return super().compute_correlation()
@@ -864,8 +876,10 @@ class IEditAdd(EvalUnit):
             data['auto_eval'] = [calculate_ssim(arr, origin_arr), calculate_dreamsim(cropped_image, cropped_origin_image)]
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [res['auto_eval'][0] * res['auto_eval'][1] for res in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 

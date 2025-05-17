@@ -63,9 +63,11 @@ class ASound(EvalUnit):
             data['human_eval'] = [1.0 - float(interface.eval_list[i]) if i != FAILED_TOKEN else 0.0 for i in idx_list[idx]]
         self.save()
 
-    def compute_accuracy(self, threshold=0.68):
+    def compute_accuracy(self, threshold=0.68, return_list=False):
         model_eval_list = [res['model_eval'] for res in self.res_list]
         model_eval_list = [np.mean([e > threshold for e in model_eval]) for model_eval in model_eval_list]
+        if return_list:
+            return model_eval_list
         return np.mean(model_eval_list)
 
     def compute_correlation(self, threshold=0.68):
@@ -256,10 +258,13 @@ class ASpeechAttribute(EvalUnit):
                 if isinstance(data['human_eval'], int) else data['human_eval']
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         wer_list = [data['wer'] for data in self.res_list]
         model_eval_list = [np.prod([me for me in data['auto_eval_score'] if me != FAILED_TOKEN]) for data in self.res_list]
-        return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
+        combined_list = [a * m for a, m in zip(wer_list, model_eval_list)]
+        if return_list:
+            return combined_list
+        return np.mean(combined_list)
 
     def compute_correlation(self):
         model_eval_list = [res['auto_eval_score'][0] for res in self.res_list if res['human_eval'] <= 1]
@@ -334,11 +339,14 @@ class ASpeechImitate(EvalUnit):
             data['human_eval'] = float(interface.eval_list[data['human_eval']] == 0) if data['human_eval'] != FAILED_TOKEN else 0.0
         self.save()
 
-    def compute_accuracy(self, threshold=0.93):
+    def compute_accuracy(self, threshold=0.93, return_list=False):
         wer_list = [data['wer'] for data in self.res_list]
         model_eval_list = [data['model_eval'] for data in self.res_list]
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
-        return np.mean([a * m for a, m in zip(wer_list, model_eval_list)])
+        combined_list = [a * m for a, m in zip(wer_list, model_eval_list)]
+        if return_list:
+            return combined_list
+        return np.mean(combined_list)
 
     def compute_correlation(self, threshold=0.93):
         model_eval_list = [data['model_eval'] for data in self.res_list]
@@ -377,8 +385,10 @@ class ASpeechModify(EvalUnit):
             data['auto_eval'] = score
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [res['auto_eval'] for res in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 
@@ -520,9 +530,11 @@ class AMusicInstrument(EvalUnit):
     def human_evaluate(self):
         self.eval_unit.human_evaluate()
 
-    def compute_accuracy(self, threshold=0.62):
+    def compute_accuracy(self, threshold=0.62, return_list=False):
         model_eval_list = [data['model_eval'] for data in self.eval_unit.res_list if 'model_eval' in data]
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        if return_list:
+            return model_eval_list
         return np.mean(model_eval_list)
 
     def compute_correlation(self, threshold=0.62):
@@ -550,8 +562,10 @@ class AMusicTempo(EvalUnit):
     def evaluate(self):
         self.eval_unit.evaluate_tempo()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [data['auto_eval_score'] for data in self.eval_unit.res_list if 'auto_eval_score' in data]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
     def save(self, save_all=False):
@@ -596,8 +610,10 @@ class AMusicIntensity(EvalUnit):
             # plt.show()
         self.save()
 
-    def compute_accuracy(self):
+    def compute_accuracy(self, return_list=False):
         auto_eval_list = [data['auto_eval'] for data in self.res_list]
+        if return_list:
+            return auto_eval_list
         return np.mean(auto_eval_list)
 
 
@@ -665,9 +681,11 @@ class AMusicExclude(EvalUnit):
             data['human_eval'] = float(interface.eval_list[data['human_eval']]) if 'human_eval' != FAILED_TOKEN else 0.0
         self.save()
 
-    def compute_accuracy(self, threshold=0.62):
+    def compute_accuracy(self, threshold=0.62, return_list=False):
         model_eval_list = [data['model_eval'] for data in self.res_list]
         model_eval_list = [float(model_eval < threshold) for model_eval in model_eval_list]
+        if return_list:
+            return model_eval_list
         return np.mean(model_eval_list)
 
     def compute_correlation(self, threshold=0.62):
