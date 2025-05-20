@@ -1,8 +1,7 @@
-import os.path
-
 from model_image import *
 from model_audio import *
 from model_interleaved import *
+from model_customized import *
 from interface import *
 
 
@@ -34,8 +33,12 @@ class EvalUnit:
                 query = {'instruction': inst['instruction_para']}
                 if 'image_list' in inst:
                     query['image_list'] = [f'./seed_instruction/image/{self.inst_name}_{idx}.png' for idx in inst['image_list']]
+                else:
+                    query['image_list'] = []
                 if 'audio_list' in inst:
                     query['audio_list'] = [f'./seed_instruction/audio/{self.inst_name}_{idx}.wav' for idx in inst['audio_list']]
+                else:
+                    query['audio_list'] = []
                 query_list.append(query)
             self.res_list = model.generate(query_list)
         self.save(save_all=True)

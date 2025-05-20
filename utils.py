@@ -1,6 +1,4 @@
 import os
-
-import openai
 import time
 import base64
 import collections
@@ -10,20 +8,16 @@ import json
 import colorsys
 import numpy as np
 import soundfile as sf
-import pandas as pd
 import torch
 import torch.nn.functional as F
 from nltk.tokenize import word_tokenize
-from google import genai
-from google.genai import types
 from tqdm import tqdm
 from PIL import Image
 from io import BytesIO
 from typing import Callable
 from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from skimage.metrics import structural_similarity as ssim
-from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
+
 
 OPENAI_KEY = os.getenv('OPENAI_KEY')
 GEMINI_KEY = os.getenv('GEMINI_KEY')
@@ -35,17 +29,6 @@ AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'
 SAMPLE_RATE = 22050
 VISION_MODEL = 'openai'
-
-idx2letter = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-]
-letter2idx = {
-    'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4, 'F': 5, 'G': 6, 'H': 7,
-    'I': 8, 'J': 9, 'K': 10, 'L': 11, 'M': 12, 'N': 13, 'O': 14, 'P': 15,
-    'Q': 16, 'R': 17, 'S': 18, 'T': 19, 'U': 20, 'V': 21, 'W': 22, 'X': 23,
-    'Y': 24, 'Z': 25
-}
 
 
 def batch(func_name: Callable, data_list, num_worker=8, **kwargs):
@@ -113,6 +96,7 @@ def form_openai_mm_query(text, images=[], audios=[]):
 
 
 def form_gemini_mm_query(text, images=[], audios=[]):
+    from google.genai import types
     message = [text] + images
     for audio in audios:
         message.append(types.Part.from_bytes(
@@ -148,6 +132,7 @@ def query_vlm(query_list, model=''):
 
 
 def query_openai(index, prompt, model, temperature):
+    import openai
     client = openai.OpenAI(api_key=OPENAI_KEY)
     retry_count = 10
     retry_interval = 10
@@ -173,6 +158,8 @@ def query_openai(index, prompt, model, temperature):
 
 
 def query_gemini(index, query, model, temperature):
+    from google import genai
+    from google.genai import types
     client = genai.Client(api_key=GEMINI_KEY)
     retry_count = 10
     retry_interval = 10
@@ -199,7 +186,7 @@ def query_gemini(index, query, model, temperature):
 
 
 def batch_query_qwen(query_list, temperature):
-    from transformers import Qwen2_5_VLForConditionalGeneration
+    from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from qwen_vl_utils import process_vision_info
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
@@ -238,6 +225,7 @@ def batch_query_qwen(query_list, temperature):
 
 
 def calculate_ssim(img1, img2):
+    from skimage.metrics import structural_similarity as ssim
     if img1.size != img2.size:
         img1 = img1.resize(img2.size, Image.LANCZOS)
     img1 = np.array(img1)
@@ -264,10 +252,17 @@ def calculate_dreamsim(img1, img2):
     return 1.0 - float(dreamsim_model(img1, img2))
 
 
+def release_dreamsim():
+    global dreamsim_model
+    if dreamsim_model is not None:
+        del dreamsim_model
+        dreamsim_model = None
+
+
 def calculate_pearson(list1, list2):
     list1 = np.array(list1)
     list2 = np.array(list2)
-    if all(list1 == list2):
+    if np.all(list1 == list2):
         return 1.0
     if np.std(list1) == 0:
         list1 += np.random.normal(0, 1e-8, list1.shape)
@@ -320,7 +315,7 @@ def count_pixels(image, reference_color, max_distance=4):
 
 
 def compute_clapscore_at(audio_list, text_list):
-    from transformers import ClapModel
+    from transformers import ClapModel, AutoProcessor
     with torch.no_grad():
         audio_list = [librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000) for audio in audio_list]
         model = ClapModel.from_pretrained("laion/clap-htsat-unfused").to('cuda')
@@ -332,7 +327,7 @@ def compute_clapscore_at(audio_list, text_list):
 
 
 def compute_clapscore_aa(audio, ref_audio_list):
-    from transformers import ClapModel
+    from transformers import ClapModel, AutoProcessor
     with torch.no_grad():
         audio = librosa.resample(audio, orig_sr=SAMPLE_RATE, target_sr=48000)
         ref_audio_list = [librosa.resample(ref_audio, orig_sr=SAMPLE_RATE, target_sr=48000) for ref_audio in ref_audio_list]
@@ -408,6 +403,7 @@ def audio_segmentation(audio, top_db=40, min_duration=1.0):
 
 def transcribe_speech(audio_list, text_list=None, language='english'):
     import evaluate
+    from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     model = AutoModelForSpeechSeq2Seq.from_pretrained("BELLE-2/Belle-whisper-large-v3-zh" if language == 'chinese' else "openai/whisper-large-v3")
     wer = evaluate.load('cer') if language == 'chinese' else evaluate.load('wer')
@@ -529,6 +525,7 @@ def text_instruction_following_verify(text_list, instruction_list):
     The instruction list should have two parameters, instruction_type and instruction_params.
     The return will be a list of {0, 1}s representing the instruction following result for each.
     """
+    from transformers import AutoProcessor
     output_list = []
     processor = AutoProcessor.from_pretrained("openai/whisper-large-v3")
     for text, inst in zip(text_list, instruction_list):

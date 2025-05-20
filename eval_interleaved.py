@@ -257,16 +257,17 @@ class ITCoherence(EvalUnit):
                 if len(texts) < 2 or len(data['image_list']) < 1:
                     data['model_eval'] = FAILED_TOKEN
                     continue
+                self.model_process_data(data, inst, ''.join(texts), queries)
             else:
                 if len(texts) != 2 or len(data['image_list']) != 1:
                     data['model_eval'] = FAILED_TOKEN
                     continue
+                self.model_process_data(data, inst, texts[1], queries)
             # texts = [t.strip() for t in texts if t.strip() != '']
             # if len(texts) != 1:
             #     data['model_eval'] = FAILED_TOKEN
             #     continue
             # self.model_process_data(data, inst, texts[0], queries)
-            self.model_process_data(data, inst, ''.join(texts), queries)
         responses = query_vlm(queries, model=self.vlm)
         for data in self.res_list:
             if data['model_eval'] != FAILED_TOKEN:
@@ -660,6 +661,7 @@ class ITCoherenceCode(ITCoherenceColor):
                 data['auto_eval'] = 0.0
             else:
                 data['auto_eval'] = calculate_dreamsim(data['image_list'][-1], inst['ref_image_list'][0])
+        release_dreamsim()
         self.save()
 
     def model_process_data(self, data, inst, res, queries):

@@ -1,4 +1,3 @@
-import os
 import shutil
 import random
 from abc import abstractmethod
@@ -9,16 +8,6 @@ from utils import *
 class Model:
     @abstractmethod
     def generate(self, query_list):
-        """
-        :param query_list: List[dict]
-        Format of an item in the response list:
-        {
-            "query": {"instruction": "Can you give me a step-by-step tutorial of how to make tomato soup?", "image_list": [], "audio_list": []},
-            "response": "Sure! Here is a step-by-step tutorial of how to make tomato soup: First, wash the tomatoes with clean water. <image_begin><image_1><image_end>. Second, ..."
-            "image_list": [PIL.image, ...],
-            "audio_list": [np.ndarray, ...]
-        }
-        """
         pass
 
 

@@ -1,5 +1,4 @@
-from scipy.signal import find_peaks
-from scipy.stats import linregress
+import pandas as pd
 from libs.SpeechGenderCls import get_gender
 
 from eval import *
@@ -102,7 +101,7 @@ class ASoundBeginEnd(ASound):
                     sample_size = min(4, len(data['audio_list'][0]) // (SAMPLE_RATE * 2))
                     audio_list.append(data['audio_list'][0][: SAMPLE_RATE * sample_size])
                     label_list.append(inst['start'])
-                    human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+                    human_eval_res_list.append({'audio_list': [audio_list[-1]]})
                     idx_list[-1].append(idx)
                     idx += 1
             if 'end' in inst:
@@ -112,7 +111,7 @@ class ASoundBeginEnd(ASound):
                     sample_size = min(4, len(data['audio_list'][0]) // (SAMPLE_RATE * 2))
                     audio_list.append(data['audio_list'][0][- SAMPLE_RATE * sample_size:])
                     label_list.append(inst['end'])
-                    human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+                    human_eval_res_list.append({'audio_list': [audio_list[-1]]})
                     idx_list[-1].append(idx)
                     idx += 1
         return audio_list, label_list, human_eval_res_list, idx_list
@@ -135,7 +134,7 @@ class ASoundInclude(ASound):
             end = round(inst['range'][1] * len(data['audio_list'][0]))
             audio_list.append(data['audio_list'][0][begin: end])
             label_list.append(inst['target'])
-            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_list[-1]]})
+            human_eval_res_list.append({'audio_list': [audio_list[-1]]})
             idx_list.append([idx])
             idx += 1
         return audio_list, label_list, human_eval_res_list, idx_list
@@ -181,8 +180,8 @@ class ASoundSilence(ASound):
                 continue
             audio_list += audio_segs
             label_list += [inst['start'], inst['end']]
-            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_segs[0]]})
-            human_eval_res_list.append({'query': data['query'], 'audio_list': [audio_segs[1]]})
+            human_eval_res_list.append({'audio_list': [audio_segs[0]]})
+            human_eval_res_list.append({'audio_list': [audio_segs[1]]})
             idx_list.append([idx, idx + 1])
             idx += 2
         return audio_list, label_list, human_eval_res_list, idx_list
@@ -576,6 +575,8 @@ class AMusicIntensity(EvalUnit):
     inst_name = 'a_music_intensity'
 
     def evaluate(self):
+        from scipy.signal import find_peaks
+        from scipy.stats import linregress
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['audio_list']) != 1:
                 data['auto_eval'] = 0.0

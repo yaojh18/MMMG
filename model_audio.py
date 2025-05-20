@@ -1,5 +1,4 @@
 import random
-import os
 import shutil
 import string
 
@@ -91,7 +90,7 @@ class StableAudio(Model):
 
 class MusicGen(Model):
     def __init__(self):
-        from transformers import MusicgenForConditionalGeneration
+        from transformers import MusicgenForConditionalGeneration, AutoProcessor
         self.processor = AutoProcessor.from_pretrained("facebook/musicgen-large")
         self.model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-large").to('cuda')
 

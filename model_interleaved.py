@@ -1,7 +1,5 @@
 import itertools
-
 import sys
-sys.path.append("/home/ubuntu/MM-IFEval/models/")
 
 from model import *
 from model_image import *
@@ -405,6 +403,8 @@ class Gemini2(Model):
         super().__init__()
 
     def generate(self, query_list):
+        from google import genai
+        from google.genai import types
         client = genai.Client(api_key=GEMINI_KEY)
         res_list = []
 

@@ -1,5 +1,4 @@
 import requests
-import os
 import io
 
 from model import Model
@@ -15,6 +14,7 @@ class Dalle3(Model):
 
     @staticmethod
     def generate_image(index, prompt, model_name):
+        import openai
         retry_count = 2
         retry_interval = 10
 
@@ -71,6 +71,8 @@ class Imagen3(Model):
 
     @staticmethod
     def generate_image_from_google(index, prompt, model_name):
+        from google import genai
+        from google.genai import types
         retry_count = 2
         retry_interval = 10
         client = genai.Client(api_key=GEMINI_KEY)
@@ -230,6 +232,7 @@ class GPT4o(Model):
 
     @staticmethod
     def generate_image(index, prompt, model_name):
+        import openai
         retry_count = 2
         retry_interval = 10
         client = openai.OpenAI(api_key=OPENAI_KEY)

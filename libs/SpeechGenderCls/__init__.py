@@ -6,11 +6,6 @@ import numpy as np
 from typing import List, Optional, Union, Dict
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
-from transformers import (
-    AutoFeatureExtractor,
-    AutoModelForAudioClassification,
-    Wav2Vec2Processor
-)
 
 
 class CustomDataset(torch.utils.data.Dataset):
@@ -59,7 +54,7 @@ class CustomDataset(torch.utils.data.Dataset):
 class CollateFunc:
     def __init__(
         self,
-        processor: Wav2Vec2Processor,
+        processor,
         padding: Union[bool, str] = True,
         pad_to_multiple_of: Optional[int] = None,
         return_attention_mask: bool = True,
@@ -118,6 +113,7 @@ def get_gender(
         id2label=None,
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
+    from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
     if id2label is None:
         id2label = {0: "female", 1: "male"}
     if label2id is None:
