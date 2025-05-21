@@ -20,46 +20,38 @@ Automatically evaluating multimodal generation presents a significant challenge,
 ![Alt text](assets/main.png)
 
 ## Evaluation
-
-We recommend using MMMG along within your model's conda environment if there is no version conflict. Check `requirements.txt` for version information. MMMG requires only a few packages that is usually compatible with your model environment unless you rely on really old packages.
-```bash
-# python >= 3.9 is required
-conda activate your_env
-pip install -r requirements.txt --upgrade-strategy only-if-needed
-```
-After, implement the `generate` function for your model in `model_customized.py`. Make sure you strictly follow the format requirement specified in `model_customized.py`. To test your model on MMMG, you should apply for [OpenAI API key](https://platform.openai.com/api-keys) and [Gemini API key](https://ai.google.dev/gemini-api/docs/api-key) and then run
-```bash
-export OPENAI_KEY=openai_key
-export GEMINI_KEY=gemini_key
-python eval_pipeline.py --model_name model_name --category category
-# model_name is the same name as your implemented model class name in model_customized.py
-# category can be one of i, it, a, at, representing image, interleaved image-text, sound + music and speech + interleaved speech-text generation.
-```
-You can also manually add your API keys at Line 22-23 in `utils.py` to permanently preserve the API keys.
-
----
-If your model's environment happen to conflict with MMMG's requirement, here is an alternative solution.
+### Generate Responses in Required Format for Parsing
+In the generation stage, MMMG requires only torch of any version and sound pakages (soundfile and librosa) that is usually compatible with your model environment. 
 ```bash
 conda activate your_env
 pip install -r requirements_light.txt --upgrade-strategy only-if-needed
+# if you have a compatible environment (check requirements.txt), you can have a single conda evaluation environment for both generation and evaluation by running the following command in your model's environment:
+# pip install -r requirements.txt --upgrade-strategy only-if-needed
 ```
-Implement the `generate` function for your model in `model_customized.py`. And then run:
+After that, implement the `generate` function for your model in `model_customized.py`. Make sure you strictly follow the format requirement specified in `model_customized.py`. Run the following instruction to generate all responses for all task:
 ```bash
-python eval_pipeline.py --model_name model_name --category category --job none
+python eval_pipeline.py --model_name model_name --category category --job generate
+# model_name is the same name as your implemented model class name in model_customized.py
+# category can be one of i, it, a, at, representing image, interleaved image-text, sound + music and speech + interleaved speech-text generation.
 ```
-Then create a conda environment for MMMG by:
+You should see a `./output/{model_name}/` folder under the root dir, which stores the generated responses.
+### Evaluate Generate Responses
+To test your model on MMMG, you should apply for [OpenAI API key](https://platform.openai.com/api-keys) and [Gemini API key](https://ai.google.dev/gemini-api/docs/api-key) and then run
 ```bash
+# python >= 3.9 is required
 conda create --name mmmg python=3.9
 conda activate mmmg
 pip install -r requirements.txt
-export OPENAI_KEY=openai_key
-export GEMINI_KEY=gemini_key
-python eval_pipeline.py --model_name model_name --category category
+export OPENAI_KEY=openai_key # change to you OpenAI API key
+export GEMINI_KEY=gemini_key # change to you Gemini API key
+python eval_pipeline.py --model_name model_name --category category  --job evaluate
 ```
-This process separate generation and evaluation stages to avoid package conflicts.
+You can also manually add your API keys at Line 22-23 in `utils.py` to permanently store the API keys.
+
+You should see a `./output/{model_name}/{category}.csv` file, which stores the evaluation scores of your model. To submit your model's scores to leaderboard, please refer to [leaderboard]().
 
 ## Baseline Models
-We provide the implementation of all baselines in `model.py`, `model_image.py`, `model_audio.py` and `model_interleaved.py`. To run these baselines models, please first download all the models files from [Google drive link]() and place them under the root dir, your file structure should look like this:
+We provide the implementation of all baselines in `model.py`, `model_image.py`, `model_audio.py` and `model_interleaved.py`. Your can use the implemented model class name for evaluation directly. To run these baselines models, please first download all the models files from [Google drive link]() and place them under the root dir, your file structure should look like this:
 ```aiignore
 root/
 ├── models/
@@ -67,8 +59,7 @@ root/
 │   ├── Seed/
 │   └── ...
 ```
-Then setup model-specific environment by the `setup.sh` file under each model folder. You can set up environments of models without a corresponding model folder by the `./models/Others/setup.sh` and make sure you pass the correct API keys.
-To access the raw evaluation results of baseline models, please download from [Google drive link]().
+Then setup model-specific environment by the `setup.sh` file under each model folder. Environmental configs of models without a corresponding model folder are in `./models/Others/setup.sh` and make sure you pass the correct API keys. To access the our evaluation results of baseline models, please download from [Google drive link]().
 ## Human Evaluation
 To replicate the human evaluation pipeline reported in paper, please run:
 ```bash

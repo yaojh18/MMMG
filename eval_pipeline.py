@@ -50,15 +50,19 @@ class EvalPipeline:
         task_name = task_name.replace('Ocr', 'OCR').replace('Cot', 'CoT').replace('3d', '3D')
         return eval(f"{task_name}(model_name='{model_name}', sample_size={sample_size})")
 
-    def evaluate(self, light=False):
+    def generate(self):
+        for index, row in self.eval_df.iterrows():
+            task_name = row['task']
+            self.eval_map(self.model_name, task_name, self.sample_size)
+
+    def evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(self.model_name, task_name, self.sample_size)
-            if not light:
-                if pd.isna(row['accuracy']):
-                    task.evaluate()
-                self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
-                self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+            if pd.isna(row['accuracy']):
+                task.evaluate()
+            self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+            self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
 
     def human_evaluate(self):
         for index, row in self.eval_df.iterrows():
@@ -273,7 +277,7 @@ if __name__ == '__main__':
                         help='Name of the model. Make sure it is the same as your implemented class name.')
     parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample size per instruction.')
-    parser.add_argument('--job', type=str, default='evaluate', help='Job type: evaluate, human, none')
+    parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
     args = parser.parse_args()
 
     pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
@@ -282,7 +286,7 @@ if __name__ == '__main__':
     elif args.job == 'human':
         pipeline.human_evaluate()
     else:
-        pipeline.evaluate(light=True)
+        pipeline.generate()
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
