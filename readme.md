@@ -1,6 +1,6 @@
 # MMMG Benchmark
 
-[**🏆 Leaderboard** (coming soon)]() | [**🤗 MMMG**](https://huggingface.co/datasets/UW-FMRL2/MMMG) | [**📖 Paper**]()
+[**🏆 Leaderboard**](https://yaojh18.github.io/mmmg-leaderboard/) | [**🤗 MMMG**](https://huggingface.co/datasets/UW-FMRL2/MMMG) | [**📖 Paper**]()
 
 This repo contains the evaluation pipeline for the paper "[MMMU-Pro: A More Robust Multi-discipline Multimodal Understanding Benchmark]()".
 
@@ -48,10 +48,10 @@ python eval_pipeline.py --model_name model_name --category category  --job evalu
 ```
 You can also manually add your API keys at Line 22-23 in `utils.py` to permanently store the API keys.
 
-You should see a `./output/{model_name}/{category}.csv` file, which stores the evaluation scores of your model. To submit your model's scores to leaderboard, please refer to [leaderboard]().
+You should see a `./output/{model_name}/{category}.csv` file, which stores the evaluation scores of your model. To submit your model's scores to leaderboard, please refer to [leaderboard](https://yaojh18.github.io/mmmg-leaderboard/).
 
 ## Baseline Models
-We provide the implementation of all baselines in `model.py`, `model_image.py`, `model_audio.py` and `model_interleaved.py`. Your can use the implemented model class name for evaluation directly. To run these baselines models, please first download all the models files from [Google drive link]() and place them under the root dir, your file structure should look like this:
+We provide the implementation of all baselines in `model.py`, `model_image.py`, `model_audio.py` and `model_interleaved.py`. Your can use the implemented model class name for evaluation directly. To run these baselines models, please first download all the models files from [Google drive link](https://drive.google.com/file/d/1cXgprXJPjE4tOJfjSG0MrwpFqugw2UZp/view?usp=drive_link) and place them under the root dir, your file structure should look like this:
 ```aiignore
 root/
 ├── models/
@@ -59,7 +59,7 @@ root/
 │   ├── Seed/
 │   └── ...
 ```
-Then setup model-specific environment by the `setup.sh` file under each model folder. Environmental configs of models without a corresponding model folder are in `./models/Others/setup.sh` and make sure you pass the correct API keys. To access the our evaluation results of baseline models, please download from [Google drive link]().
+Then setup model-specific environment by the `setup.sh` file under each model folder. Environmental configs of models without a corresponding model folder are in `./models/Others/setup.sh` and make sure you pass the correct API keys. To access the our evaluation results of baseline models, please download from [Google drive link](https://drive.google.com/file/d/1y-fAjtdj4MHI3VSOE_L_KHmSrm4sKqG9/view?usp=sharing).
 ## Human Evaluation
 To replicate the human evaluation pipeline reported in paper, please run:
 ```bash

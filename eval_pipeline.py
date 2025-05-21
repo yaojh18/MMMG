@@ -5,6 +5,7 @@ from utils import *
 
 import pandas as pd
 import argparse
+from collections import defaultdict
 
 
 class EvalPipeline:
@@ -14,23 +15,22 @@ class EvalPipeline:
         self.cat = cat
         self.sample_size = sample_size
         if cat == 'i':
-            self.eval_list = ['i_object_include', 'i_object_exclude', 'i_object_count', 'i_object_cot',
-                              'i_object_attribute', 'i_relation_two', 'i_relation_all', 'i_spacial_relative',
-                              'i_spacial_absolute', 'i_format_background', 'i_format_border', 'i_ocr',
-                              'i_ocr_two', 'i_ocr_multi_lingual']
+            self.eval_list = ['object inclusion', 'object exclusion', 'object count', 'object reasoning',
+                              'object attribution', 'comparison relation', 'universal relation', 'relative spatial relation',
+                              'absolute spatial relation', 'region fill', 'border fill', 'single text rendering',
+                              'double text rendering', 'multi-lingual text rendering']
         elif cat == 'it':
-            self.eval_list = ['i_consistency_semantic', 'i_consistency_3d_object', 'i_consistency_3d_scene',
-                              'i_consistency_compose', 'i_consistency_decompose', 'i_edit_add', 'i_edit_color',
-                              'i_edit_text', 'i_edit_object_add', 'i_edit_object_remove', 'i_edit_object_modify',
-                              'it_coherence_count', 'it_coherence_color', 'it_coherence_size', 'it_coherence_ocr',
-                              'it_coherence_spacial_relative', 'it_coherence_spacial_absolute',
-                              'it_coherence_math', 'it_coherence_code', 'i_structure']
+            self.eval_list = ['semantic consistency', 'multi-angle consistency', 'multi-view consistency', 'composition consistency',
+                              'decomposition consistency', 'interleaved object adding', 'interleaved color modifying', 'text editing',
+                              'object adding', 'object removing', 'object_modifying', 'self count',
+                              'self color recognition', 'self size recognition', 'self text recognition', 'self relative spatial recognition',
+                              'self absolute spatial recognition', 'interleaved math', 'interleaved code', 'text-image order']
         elif cat == 'a':
-            self.eval_list = ['a_sound_begin_end', 'a_sound_include', 'a_sound_cot', 'a_sound_silence',
-                              'a_music_instrument', 'a_music_exclude', 'a_music_tempo', 'a_music_intensity']
+            self.eval_list = ['sound begin-end', 'sound inclusion', 'sound reasoning', 'sound silence',
+                              'instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity']
         elif cat == 'at':
-            self.eval_list = ['a_speech_attribute', 'a_speech_chinese', 'a_speech_imitate', 'a_speech_modify',
-                              'a_speech_constraint', 'a_consistency_conversation', 'a_structure']
+            self.eval_list = ['voice attribution', 'multi-lingual speech', 'voice replication', 'transcript editing',
+                              'transcript generation', 'conversation', 'audio-text order']
 
         if os.path.exists(f'./output/{model_name}/{cat}_eval.csv'):
             self.eval_df = pd.read_csv(f'./output/{model_name}/{cat}_eval.csv')
@@ -46,6 +46,36 @@ class EvalPipeline:
 
     @staticmethod
     def eval_map(model_name, task_name, sample_size):
+        class m_defaultdict(defaultdict):
+            def __missing__(self, key):
+                return key
+        task_name = m_defaultdict(str, {
+            'object inclusion': 'i_object_include', 'object exclusion': 'i_object_exclude',
+            'object count': 'i_object_count', 'object reasoning': 'i_object_cot',
+            'object attribution': 'i_object_attribute', 'comparison relation': 'i_relation_two',
+            'universal relation': 'i_relation_all', 'relative spatial relation': 'i_spacial_relative',
+            'absolute spatial relation': 'i_spacial_absolute', 'region fill': 'i_format_background',
+            'border fill': 'i_format_border', 'single text rendering': 'i_ocr',
+            'double text rendering': 'i_ocr_two', 'multi-lingual text rendering': 'i_ocr_multi_lingual',
+            'semantic consistency': 'i_consistency_semantic', 'multi-angle consistency': 'i_consistency_3d_object',
+            'multi-view consistency': 'i_consistency_3d_scene', 'composition consistency': 'i_consistency_compose',
+            'decomposition consistency':'i_consistency_decompose', 'interleaved object adding':'i_edit_add',
+            'interleaved color modifying': 'i_edit_color', 'text editing': 'i_edit_text',
+            'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove',
+            'object_modifying': 'i_edit_object_modify', 'self count': 'it_coherence_count',
+            'self color recognition': 'it_coherence_color', 'self size recognition': 'it_coherence_size',
+            'self text recognition': 'it_coherence_ocr', 'self relative spatial recognition': 'it_coherence_spacial_relative',
+            'self absolute spatial recognition': 'it_coherence_spacial_absolute', 'interleaved math': 'it_coherence_math',
+            'interleaved code': 'it_coherence_code', 'text-image order': 'i_structure',
+            'sound begin-end': 'a_sound_begin_end', 'sound inclusion': 'a_sound_include',
+            'sound reasoning': 'a_sound_cot', 'sound silence': 'a_sound_silence',
+            'instrument inclusion': 'a_music_instrument', 'instrument exclusion': 'a_music_exclude',
+            'music tempo': 'a_music_tempo', 'music intensity': 'a_music_intensity',
+            'voice attribution': 'a_speech_attribute', 'multi-lingual speech': 'a_speech_chinese',
+            'voice replication': 'a_speech_imitate', 'transcript editing': 'a_speech_modify',
+            'transcript generation': 'a_speech_constraint', 'conversation': 'a_consistency_conversation',
+            'audio-text order': 'a_structure'
+        })[task_name]
         task_name = ''.join([t.capitalize() if i > 0 else t.upper() for i, t in enumerate(task_name.split('_'))])
         task_name = task_name.replace('Ocr', 'OCR').replace('Cot', 'CoT').replace('3d', '3D')
         return eval(f"{task_name}(model_name='{model_name}', sample_size={sample_size})")
@@ -276,11 +306,10 @@ if __name__ == '__main__':
     parser.add_argument('--model_name', type=str, default='Dalle3',
                         help='Name of the model. Make sure it is the same as your implemented class name.')
     parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--sample_size', type=int, default=4, help='Sample size per instruction.')
     parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
     args = parser.parse_args()
 
-    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    pipeline = EvalPipeline(args.model_name, args.category, 4)
     if args.job == 'evaluate':
         pipeline.evaluate()
     elif args.job == 'human':
@@ -290,8 +319,7 @@ if __name__ == '__main__':
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
-    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    # benchmark = EvalBenchmark(cat=args.category, sample_size=4)
     # benchmark.rank_models()
