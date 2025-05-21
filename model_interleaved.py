@@ -724,11 +724,11 @@ class SeedLlama(Model):
 class SpiritLM(Model):
     def __init__(self):
         super().__init__()
-        from models.spiritlm.spiritlm.model.spiritlm_model import Spiritlm
+        from models.SpiritLM.spiritlm.model.spiritlm_model import Spiritlm
         self.model = Spiritlm("spirit-lm-expressive-7b")
 
     def generate(self, query_list):
-        from models.spiritlm.spiritlm.model.spiritlm_model import OutputModality, GenerationInput, ContentType
+        from models.SpiritLM.spiritlm.model.spiritlm_model import OutputModality, GenerationInput, ContentType
         from transformers import GenerationConfig
 
         output_list = []
@@ -867,23 +867,23 @@ class Anole(Model):
     def generate(self, query_list):
         
         ## make input file
-        os.makedirs('./models/anole/input/', exist_ok=True)
-        with open('./models/anole/input/prompt.jsonl', 'w', encoding='utf-8') as file:
+        os.makedirs('./models/Anole/input/', exist_ok=True)
+        with open('./models/Anole/input/prompt.jsonl', 'w', encoding='utf-8') as file:
             for query in query_list:
                 file.write(json.dumps(query['instruction'])+'\n')
                      
         ## make output file
-        if os.path.exists('./models/anole/output/'):
-            shutil.rmtree('./models/anole/output/')
-            os.makedirs("./models/anole/output/")
+        if os.path.exists('./models/Anole/output/'):
+            shutil.rmtree('./models/Anole/output/')
+            os.makedirs("./models/Anole/output/")
 
         ## use model
-        os.system("""python models/anole/interleaved_generation.py""")
+        os.system("""python ./models/Anole/interleaved_generation.py""")
         
         ## process output
         output_list = []
         for idx, query in enumerate(query_list):
-            dir_path = f'./models/anole/output/{idx}/'
+            dir_path = f'./models/Anole/output/{idx}/'
             with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
                 text = ''.join(f.readlines())
                 

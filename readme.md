@@ -21,15 +21,13 @@ Automatically evaluating multimodal generation presents a significant challenge,
 
 ## Evaluation
 
-We provide two ways of using MMMG evaluation suite. Choose the most convenient way for yourself.
-### Interface
-We recommend using MMMG along within your model's conda environment if there is no version conflict. For all required packages, only openai>=1.76.0, google-genai>=1.10.0, transformers>=4.34.0 and evaluate>=0.2.0 have required lowest versions. Typically, MMMG is compatible with your model environment unless you implement models before 2023.
+We recommend using MMMG along within your model's conda environment if there is no version conflict. Check `requirements.txt` for version information. MMMG requires only a few packages that is usually compatible with your model environment unless you rely on really old packages.
 ```bash
 # python >= 3.9 is required
 conda activate your_env
 pip install -r requirements.txt --upgrade-strategy only-if-needed
 ```
-After, implement the `generate` function for your model in `model_customized.py`. Make sure you strictly follow the format requirement. To test your model on MMMG, you should apply for [OpenAI API key](https://platform.openai.com/api-keys) and [Gemini API key](https://ai.google.dev/gemini-api/docs/api-key) and then run
+After, implement the `generate` function for your model in `model_customized.py`. Make sure you strictly follow the format requirement specified in `model_customized.py`. To test your model on MMMG, you should apply for [OpenAI API key](https://platform.openai.com/api-keys) and [Gemini API key](https://ai.google.dev/gemini-api/docs/api-key) and then run
 ```bash
 export OPENAI_KEY=openai_key
 export GEMINI_KEY=gemini_key
@@ -59,8 +57,25 @@ export GEMINI_KEY=gemini_key
 python eval_pipeline.py --model_name model_name --category category
 ```
 This process separate generation and evaluation stages to avoid package conflicts.
-### Package
-coming soon
+
+## Baseline Models
+We provide the implementation of all baselines in `model.py`, `model_image.py`, `model_audio.py` and `model_interleaved.py`. To run these baselines models, please first download all the models files from [Google drive link]() and place them under the root dir, your file structure should look like this:
+```aiignore
+root/
+├── models/
+│   ├── Anole/
+│   ├── Seed/
+│   └── ...
+```
+Then setup model-specific environment by the `setup.sh` file under each model folder. You can set up environments of models without a corresponding model folder by the `./models/Others/setup.sh` and make sure you pass the correct API keys.
+To access the raw evaluation results of baseline models, please download from [Google drive link]().
+## Human Evaluation
+To replicate the human evaluation pipeline reported in paper, please run:
+```bash
+pip install gradio
+python eval_pipeline.py --model_name model_name --category category --job human
+```
+
 ## Contact
 - Jihan Yao: jihany2@cs.washington.edu
 - Yushi Hu: yushihu@uw.edu

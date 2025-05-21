@@ -28,7 +28,7 @@ class TangoFlux(Model):
 
 class Tango2(Model):
     def __init__(self):
-        from models.tango.tango import Tango
+        from models.Tango.tango import Tango
         self.model = Tango("declare-lab/tango2-full")
 
     def generate(self, query_list):
@@ -50,7 +50,7 @@ class Tango2(Model):
 
 class TangoMusic(Tango2):
     def __init__(self):
-        from models.tango.tango import Tango
+        from models.Tango.tango import Tango
         self.model = Tango("declare-lab/tango-music-af-ft-mc")
 
 
@@ -142,7 +142,7 @@ class YuE(Model):
         output_list = []
 
         for query in tqdm(query_list):
-            with open("models/YuE/prompt_egs/genre.txt", "w") as f:
+            with open("./models/YuE/prompt_egs/genre.txt", "w") as f:
                 f.write(query)
             command = f"""python models/YuE/inference/infer.py --cuda_idx 2 \
                                                                --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
@@ -157,10 +157,10 @@ class YuE(Model):
             os.system(command)
 
             ## process output
-            file = [item for item in os.listdir("models/YuE/output/") if item.endswith('.mp3')][0]
-            output_list.append(librosa.load(f"models/YuE/output/{file}")[0])
-            shutil.rmtree("models/YuE/output/")
-            os.makedirs("models/YuE/output/")
+            file = [item for item in os.listdir("./models/YuE/output/") if item.endswith('.mp3')][0]
+            output_list.append(librosa.load(f"./models/YuE/output/{file}")[0])
+            shutil.rmtree("./models/YuE/output/")
+            os.makedirs("./models/YuE/output/")
 
         res_list = []
         for query, output in zip(query_list, output_list):

@@ -32,6 +32,7 @@ class ModelCustomized(Model):
             # response: Interleaved text, image and audio in the generated order; the response should be the generated text with images and audios replaced by placeholders
             # image placeholder: IMAGE_TOKEN(i) = <image_begin><image_i><image_end>, where i is the relative index of the image in the response starting from 0; e.g. IMAGE_TOKEN(0) is the first generated image.
             # audio placeholder: AUDIO_TOKEN(i) = <audio_begin><audio_i><audio_end>, where i is the relative index of the audio in the response starting from 0; e.g. AUDIO_TOKEN(0) is the first generated audio.
+            # For image-only or audio-only generation models, you can return a single placeholder IMAGE_TOKEN(0) or AUDIO_TOKEN(0).
             "response": "Sure! Here is a step-by-step tutorial of how to make tomato soup: First, wash the tomatoes with clean water. <image_begin><image_0><image_end>. Second, ...",
             # image_list: images for corresponding image placeholders in order; images should be in PIL format
             "image_list": [PIL.Image, ...],
