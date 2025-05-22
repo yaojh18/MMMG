@@ -307,9 +307,10 @@ if __name__ == '__main__':
                         help='Name of the model. Make sure it is the same as your implemented class name.')
     parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
+    parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
-    pipeline = EvalPipeline(args.model_name, args.category, 4)
+    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
     if args.job == 'evaluate':
         pipeline.evaluate()
     elif args.job == 'human':
@@ -319,7 +320,8 @@ if __name__ == '__main__':
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
-    # benchmark = EvalBenchmark(cat=args.category, sample_size=4)
+    # benchmark = EvalBenchmark(cat=args.category, args.sample_size)
     # benchmark.rank_models()
