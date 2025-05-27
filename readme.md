@@ -32,7 +32,7 @@ export GEMINI_KEY=gemini_key # change to you Gemini API key
 ```
 You can also manually add your API keys at Line 22-23 in `utils.py` to permanently store the API keys.
 
-### Evaluation with Pre-generated Responses
+## Evaluation with Pre-generated Responses
 First, you need to put your generated responses in the required format. For reference, you can see the outputs we get for all the models in [Google drive link](https://drive.google.com/drive/folders/183cvq-4Rz0NaWf3X6VWpr7vdbwjx6hf0?usp=drive_link).
 
 For demonstration purpose, we have a subset of Gemini2 on object addition task in `./output/Gemini2/`. The responses are stored in `./output/Gemini2/i_edit_add.json` and the generated images are stored in `./output/Gemini2/image`.You can evaluate it by
@@ -41,7 +41,7 @@ python eval_pipeline.py --model_name Gemini2 --category quick_test --job evaluat
 ```
 You will see a `./output/Gemini2/it_eval.csv` file, which stores the score of Gemini2 on object addition. The autoeval score for each task instance is stored in `./output/Gemini2/i_edit_add.json`
 
-To get MMMG scores, you need to pre-generated responses for all tasks in a category (i, it, a, at) and put them in the `./output/{model_name}/{category}/` folder. For example, to get interleaved text and image (it) score of Gemini2, generate for all subtasks and run
+To get MMMG scores, you need to pre-generated responses for all tasks in a category (i, it, a, at) and put them in the `./output/{model_name}/` folder. For example, to get interleaved text and image (it) score of Gemini2, generate for all subtasks and run
 ```bash
 python eval_pipeline.py --model_name Gemini2 --category it --job evaluate
 ```
