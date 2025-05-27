@@ -31,6 +31,9 @@ class EvalPipeline:
         elif cat == 'at':
             self.eval_list = ['voice attribution', 'multi-lingual speech', 'voice replication', 'transcript editing',
                               'transcript generation', 'conversation', 'audio-text order']
+            
+        elif cat == 'quick_test':
+            self.eval_list = ['object adding']
 
         if os.path.exists(f'./output/{model_name}/{cat}_eval.csv'):
             self.eval_df = pd.read_csv(f'./output/{model_name}/{cat}_eval.csv')
