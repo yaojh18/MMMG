@@ -1,8 +1,8 @@
 # MMMG Benchmark
 
-[**🏆 Leaderboard**](https://yaojh18.github.io/mmmg-leaderboard/#leaderboard) | [**🤗 MMMG**](https://huggingface.co/datasets/UW-FMRL2/MMMG) | [**📖 Paper**]()
+[**🏆 Leaderboard**](https://yaojh18.github.io/mmmg-leaderboard/#leaderboard) | [**🤗 MMMG**](https://huggingface.co/datasets/UW-FMRL2/MMMG) | [**📖 Paper**](https://arxiv.org/abs/2505.17613v1)
 
-This repo contains the evaluation pipeline for the paper "[MMMU-Pro: A More Robust Multi-discipline Multimodal Understanding Benchmark]()".
+This repo contains the evaluation pipeline for the paper "[MMMU-Pro: A More Robust Multi-discipline Multimodal Understanding Benchmark](https://arxiv.org/abs/2505.17613v1)".
 
 [//]: # (## 🔔News)
 
@@ -95,5 +95,13 @@ python eval_pipeline.py --model_name model_name --category category --job human
 
 **BibTeX:**
 ```bibtex
-comming soon
+@misc{yao2025mmmgcomprehensivereliableevaluation,
+      title={MMMG: a Comprehensive and Reliable Evaluation Suite for Multitask Multimodal Generation}, 
+      author={Jihan Yao and Yushi Hu and Yujie Yi and Bin Han and Shangbin Feng and Guang Yang and Bingbing Wen and Ranjay Krishna and Lucy Lu Wang and Yulia Tsvetkov and Noah A. Smith and Banghua Zhu},
+      year={2025},
+      eprint={2505.17613},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2505.17613}, 
+}
 ```
