@@ -10,30 +10,39 @@ from collections import defaultdict
 
 class EvalPipeline:
     def __init__(self, model_name, cat='i', sample_size=1):
-        assert cat in ['i', 'it', 'a', 'at']
+        assert cat in ['i', 'it', 'a', 'at', 'quick_test']
         self.model_name = model_name
         self.cat = cat
         self.sample_size = sample_size
         if cat == 'i':
-            self.eval_list = ['object inclusion', 'object exclusion', 'object count', 'object reasoning',
-                              'object attribution', 'comparison relation', 'universal relation', 'relative spatial relation',
-                              'absolute spatial relation', 'region fill', 'border fill', 'single text rendering',
-                              'double text rendering', 'multi-lingual text rendering']
+            self.eval_agg_dict = {
+                'object': ['object inclusion', 'object exclusion', 'object count', 'object reasoning', 'object attribution'],
+                'relation': ['comparison relation', 'universal relation', 'relative spatial relation', 'absolute spatial relation'],
+                'format': ['region fill', 'border fill'],
+                'text rendering': ['single text rendering', 'double text rendering', 'multi-lingual text rendering']
+            }
         elif cat == 'it':
-            self.eval_list = ['semantic consistency', 'multi-angle consistency', 'multi-view consistency', 'composition consistency',
-                              'decomposition consistency', 'interleaved object adding', 'interleaved color modifying', 'text editing',
-                              'object adding', 'object removing', 'object_modifying', 'self count',
-                              'self color recognition', 'self size recognition', 'self text recognition', 'self relative spatial recognition',
-                              'self absolute spatial recognition', 'interleaved math', 'interleaved code', 'text-image order']
+            self.eval_agg_dict = {
+                'consistency': ['semantic consistency', 'multi-angle consistency', 'multi-view consistency', 'composition consistency', 'decomposition consistency'],
+                'coherence': ['self count', 'self color recognition', 'self size recognition', 'self text recognition', 'self relative spatial recognition', 'self absolute spatial recognition', 'text-image order'],
+                'editing': ['interleaved object adding', 'interleaved color modifying', 'text editing', 'object adding', 'object removing', 'object_modifying'],
+                'reasoning': ['interleaved math', 'interleaved code']
+            }
         elif cat == 'a':
-            self.eval_list = ['sound begin-end', 'sound inclusion', 'sound reasoning', 'sound silence',
-                              'instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity']
+            self.eval_agg_dict = {
+                'sound': ['sound begin-end', 'sound inclusion', 'sound reasoning', 'sound silence'],
+                'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity']
+            }
         elif cat == 'at':
-            self.eval_list = ['voice attribution', 'multi-lingual speech', 'voice replication', 'transcript editing',
-                              'transcript generation', 'conversation', 'audio-text order']
-            
+            self.eval_agg_dict = {
+                'voice': ['voice attribution', 'multi-lingual speech', 'voice replication'],
+                'transcript': ['transcript editing', 'transcript generation'],
+                'coherence': ['conversation', 'audio-text order']
+            }
         elif cat == 'quick_test':
-            self.eval_list = ['object adding']
+            self.eval_agg_dict = {'object': ['object adding']}
+
+        self.eval_list = list(itertools.chain(*self.eval_agg_dict.values()))
 
         if os.path.exists(f'./output/{model_name}/{cat}_eval.csv'):
             self.eval_df = pd.read_csv(f'./output/{model_name}/{cat}_eval.csv')
@@ -96,6 +105,15 @@ class EvalPipeline:
                 task.evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+        agg_dict = {}
+        for task_name in self.eval_agg_dict:
+            agg_dict[task_name] = self.eval_df[self.eval_df['task'].isin(self.eval_agg_dict[task_name])]['accuracy'].mean()
+        agg_dict['overall'] = self.eval_df['accuracy'].fillna(0).mean()
+        for key in agg_dict:
+            if np.isnan(agg_dict[key]):
+                agg_dict[key] = None
+        with open(f'./output/{self.model_name}/{self.cat}_agg_eval.json', 'w', encoding='utf-8') as file:
+            json.dump(agg_dict, file, ensure_ascii=False, indent=4)
 
     def human_evaluate(self):
         for index, row in self.eval_df.iterrows():
@@ -164,6 +182,7 @@ class EvalBenchmark:
         combined_df = reshaped_dfs[0]
         for i in range(1, len(reshaped_dfs)):
             combined_df = pd.merge(combined_df, reshaped_dfs[i], on='task', how='inner')
+        combined_df.fillna(0.0, inplace=True)
         model_names = self.pipelines.keys()
         results = {'models': model_names}
         combined_df.to_csv(f'./output/{self.cat}_eval.csv', index=False)
@@ -308,7 +327,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
     parser.add_argument('--model_name', type=str, default='Dalle3',
                         help='Name of the model. Make sure it is the same as your implemented class name.')
-    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--category', type=str, default='quick_test', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
@@ -326,5 +345,5 @@ if __name__ == '__main__':
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
-    # benchmark = EvalBenchmark(cat=args.category, args.sample_size)
+    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
     # benchmark.rank_models()
