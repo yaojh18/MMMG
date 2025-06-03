@@ -896,3 +896,67 @@ class Anole(Model):
                 'audio_list': [],
             })
         return output_list
+
+
+class GPTImage(Model):
+    model_name = 'gpt-4.1'
+
+    @staticmethod
+    def generate_image(index, prompt, model_name):
+        from utils import encode_image, decode_image
+        import openai
+
+        def form_mm_query(text, images):
+            message = [{"type": "input_text", "text": text}]
+            for image in images:
+                message.append({
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{encode_image(Image.open(image))}",
+                })
+            return [{'role': 'user', 'content': message}]
+
+        retry_count = 2
+        retry_interval = 10
+        client = openai.OpenAI(api_key=OPENAI_KEY)
+
+        for _ in range(retry_count):
+            try:
+                response = client.responses.create(
+                    model=model_name,
+                    input=form_mm_query(prompt['instruction'], prompt['image_list'] if 'image_list' in prompt else []),
+                    temperature=0.1,
+                    top_p=1.0,
+                    tools=[{"type": "image_generation"}],
+                )
+                res = ''
+                image_list = []
+                idx = 0
+                for output in response.output:
+                    if output.type == 'image_generation_call':
+                        res += IMAGE_TOKEN(idx)
+                        idx += 1
+                        image_list.append(decode_image(output.result))
+                    elif output.type == 'message':
+                        res += output.content[0].text
+                return index, {
+                    'query': prompt,
+                    'response': res,
+                    'image_list': image_list,
+                    'audio_list': [],
+                }
+
+            except Exception as e:
+                print("Error info: ", e)
+                print('Retrying....')
+                retry_interval *= 2
+                time.sleep(retry_interval)
+        print('Fail to get response.')
+        return index, {
+            'query': prompt,
+            'response': '',
+            'image_list': [],
+            'audio_list': [],
+        }
+
+    def generate(self, query_list):
+        return batch(self.generate_image, query_list, model_name=self.model_name)

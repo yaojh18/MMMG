@@ -48,6 +48,12 @@ def encode_image(image: Image.Image, dtype='png'):
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
+def decode_image(encoded_image: str):
+    image_data = base64.b64decode(encoded_image)
+    image_buffer = BytesIO(image_data)
+    return Image.open(image_buffer)
+
+
 def encode_audio(audio: np.ndarray, dtype='wav', decode=True, return_file=False):
     buffer = BytesIO()
     sf.write(buffer, audio, SAMPLE_RATE, format=dtype)

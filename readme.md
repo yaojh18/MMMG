@@ -2,7 +2,7 @@
 
 [**🏆 Leaderboard**](https://yaojh18.github.io/mmmg-leaderboard/#leaderboard) | [**🤗 MMMG**](https://huggingface.co/datasets/UW-FMRL2/MMMG) | [**📖 Paper**](https://arxiv.org/abs/2505.17613v1)
 
-This repo contains the evaluation pipeline for the paper "[MMMU-Pro: A More Robust Multi-discipline Multimodal Understanding Benchmark](https://arxiv.org/abs/2505.17613v1)".
+This repo contains the evaluation pipeline for the paper "[MMMG: a Comprehensive and Reliable Evaluation Suite for Multitask Multimodal Generation](https://arxiv.org/abs/2505.17613v1)".
 
 [//]: # (## 🔔News)
 
