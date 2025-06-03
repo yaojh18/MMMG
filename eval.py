@@ -4,6 +4,8 @@ from model_interleaved import *
 from model_customized import *
 from interface import *
 
+import gc
+
 
 class EvalUnit:
     inst_name: str
@@ -43,6 +45,9 @@ class EvalUnit:
             self.res_list = model.generate(query_list)
         self.save(save_all=True)
         self.load()
+
+        del model
+        gc.collect()
 
     def load(self):
         self.res_list = []
