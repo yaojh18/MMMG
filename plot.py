@@ -55,10 +55,10 @@ def plot_model_radar(cat='i'):
         ax.fill(angles, values, color=colors[idx], alpha=0.2)
 
     plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.25), fontsize=18, frameon=True,
-               facecolor='white', framealpha=0.8, edgecolor='lightgray', ncol=3)
+               facecolor='white', framealpha=0.8, edgecolor='lightgray', ncol=2)
     plt.tight_layout()
     plt.savefig(f'./figures/{cat}_eval.png', bbox_inches='tight', dpi=600, pad_inches=0.1)
 
 
 if __name__ == '__main__':
-    plot_model_radar('i')
+    pass

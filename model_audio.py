@@ -1,5 +1,4 @@
 import random
-import os
 import shutil
 import string
 
@@ -29,7 +28,7 @@ class TangoFlux(Model):
 
 class Tango2(Model):
     def __init__(self):
-        from models.tango.tango import Tango
+        from models.Tango.tango import Tango
         self.model = Tango("declare-lab/tango2-full")
 
     def generate(self, query_list):
@@ -51,7 +50,7 @@ class Tango2(Model):
 
 class TangoMusic(Tango2):
     def __init__(self):
-        from models.tango.tango import Tango
+        from models.Tango.tango import Tango
         self.model = Tango("declare-lab/tango-music-af-ft-mc")
 
 
@@ -91,7 +90,7 @@ class StableAudio(Model):
 
 class MusicGen(Model):
     def __init__(self):
-        from transformers import MusicgenForConditionalGeneration
+        from transformers import MusicgenForConditionalGeneration, AutoProcessor
         self.processor = AutoProcessor.from_pretrained("facebook/musicgen-large")
         self.model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-large").to('cuda')
 
@@ -143,7 +142,7 @@ class YuE(Model):
         output_list = []
 
         for query in tqdm(query_list):
-            with open("models/YuE/prompt_egs/genre.txt", "w") as f:
+            with open("./models/YuE/prompt_egs/genre.txt", "w") as f:
                 f.write(query)
             command = f"""python models/YuE/inference/infer.py --cuda_idx 2 \
                                                                --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
@@ -158,10 +157,10 @@ class YuE(Model):
             os.system(command)
 
             ## process output
-            file = [item for item in os.listdir("models/YuE/output/") if item.endswith('.mp3')][0]
-            output_list.append(librosa.load(f"models/YuE/output/{file}")[0])
-            shutil.rmtree("models/YuE/output/")
-            os.makedirs("models/YuE/output/")
+            file = [item for item in os.listdir("./models/YuE/output/") if item.endswith('.mp3')][0]
+            output_list.append(librosa.load(f"./models/YuE/output/{file}")[0])
+            shutil.rmtree("./models/YuE/output/")
+            os.makedirs("./models/YuE/output/")
 
         res_list = []
         for query, output in zip(query_list, output_list):
@@ -251,3 +250,24 @@ class MakeAnAudio2(Model):
                 'audio_list': [audio],
             })
         return res_list
+
+
+class Suno(Model):
+    """
+    Remember to start localhost first
+    """
+
+    def generate(self, query_list):
+        import requests
+        output_list = []
+        url = "http://localhost:3000/api/custom_generate"
+        for query in tqdm(query_list):
+            response = requests.post(url, json={
+                "prompt": "",
+                "tags": query['instruction'],
+                "make_instrumental": False,
+                "wait_audio": True
+            }, headers={'Content-Type': 'application/json'})
+            res = response.json()
+            pass
+

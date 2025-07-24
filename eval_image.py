@@ -874,6 +874,7 @@ class IEditAdd(EvalUnit):
             origin_arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
             arr[bbox[1]: bbox[3], bbox[0]: bbox[2]] = [0, 0, 0]
             data['auto_eval'] = [calculate_ssim(arr, origin_arr), calculate_dreamsim(cropped_image, cropped_origin_image)]
+        release_dreamsim()
         self.save()
 
     def compute_accuracy(self, return_list=False):

@@ -1,12 +1,16 @@
-openai
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+torch
+torchvision
+torchaudio
+openai>=1.76.0
+google-genai>=1.10.0
 librosa
 soundfile
-google-genai
 scikit-image
-scikit-learn
-transformers
-gradio
-evaluate
 scipy
 dreamsim
 nltk
+jiwer
+transformers>=4.34.0
+evaluate>=0.2.0
