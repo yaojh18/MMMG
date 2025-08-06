@@ -1,3 +1,4 @@
+import gc
 import os
 import time
 import base64
@@ -20,8 +21,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from skimage.metrics import structural_similarity as ssim
 
 
-OPENAI_KEY = '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'
-GEMINI_KEY = 'AIzaSyB-MKMN8fRHpk6LLLR9jrkJfeUxLzX70s8'
+OPENAI_KEY = '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'
+GEMINI_KEY = 'AIzaSyD5TIL5-MtYTD66BO4c55HeMEDue9IdXmI'
 REPLICATE_KEY = 'r8_UK8hAuFDdTWdUVsHNtHAov6TaBDo8Vw1zph3t'
 RECRAFT_KEY = 'brbYCYRV7RNpIfTEneG3QA1Bll7vb55W8fnf03sT42jy2JdyikKW8ysIR02zGWz3'
 HF_KEY = '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'
@@ -129,7 +130,7 @@ def form_qwen_mm_query(text, images=[], audios=[]):
 def query_vlm(query_list, model=''):
     model = model or VISION_MODEL
     if model == 'gemini':
-        return batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
+        return batch(query_gemini, query_list, model='gemini-2.5-pro', temperature=0.0)
     elif model == 'openai':
         return batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
     elif model == 'qwen':
@@ -195,10 +196,11 @@ def query_gemini(index, query, model, temperature):
 def batch_query_qwen(query_list, temperature):
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from qwen_vl_utils import process_vision_info
+    torch.cuda.empty_cache()
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
+        "Qwen/Qwen2.5-VL-72B-Instruct", torch_dtype="auto", device_map="auto", load_in_8bit=True,
     )
-    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-72B-Instruct")
     output_list = []
     generation_kwargs = {'max_new_tokens': 256}
     if temperature == 0.0:
@@ -228,6 +230,9 @@ def batch_query_qwen(query_list, temperature):
         output_list.append(processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )[0])
+    del model
+    del processor
+    gc.collect()
     return output_list
 
 

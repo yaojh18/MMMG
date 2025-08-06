@@ -1,3 +1,5 @@
+import re
+
 import unicodedata
 
 from eval import *
@@ -40,6 +42,8 @@ class IObject(EvalUnit):
                 queries.append(form_mm_query(I_SCENE_PROMPT(obj_list[0]), images=data['image_list'], model=self.vlm))
                 queries += [form_mm_query(self.instruction_func(obj), images=data['image_list'], model=self.vlm)
                             for obj in obj_list[1:]]
+            elif self.inst_name == 'i_object_count':
+                queries.append(form_mm_query(self.instruction_func(inst), images=data['image_list'], model=self.vlm))
             else:
                 queries += [form_mm_query(self.instruction_func(obj), images=data['image_list'], model=self.vlm)
                             for obj in obj_list]
@@ -53,7 +57,7 @@ class IObject(EvalUnit):
 
         if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['model_eval'] = [float(data['model_eval'][0] == (inst['count'] - 2))]
+                data['model_eval'] = [float(data['model_eval'][0] == ((inst['count'] - 2) if inst['count'] <= 6 else (inst['count'] - 6)))]
             self.save()
 
     def human_evaluate(self):
@@ -186,12 +190,12 @@ class IObjectCoT(IObjectInclude):
 
 class IObjectCount(IObject):
     inst_name = 'i_object_count'
-    vlm = 'openai'
+    vlm = 'gemini'
     label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
 
     @staticmethod
-    def instruction_func(obj):
-        return I_OBJECT_COUNT_PROMPT(obj)
+    def instruction_func(inst):
+        return I_OBJECT_COUNT_PROMPT_LESS(inst['object']) if inst['count'] <= 6 else I_OBJECT_COUNT_PROMPT_MORE(inst['object'])
 
     @staticmethod
     def human_instruction_func(obj_list):
@@ -199,7 +203,12 @@ class IObjectCount(IObject):
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return ord(res.strip().lower()[0]) - 97
+        match = re.search('Answer:\s*([A-F])', res)
+        if match is not None:
+            return ord(match.group(1).upper()) - ord('A') + 1
+        else:
+            return 0
+
 
     @staticmethod
     def human_judge_process_func(res: str):
@@ -889,4 +898,6 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    pass
+    task = IObjectCount(model_name='GPT4o')
+    task.evaluate()
+    print(task.compute_accuracy())

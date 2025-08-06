@@ -1,4 +1,6 @@
-I_OBJECT_COUNT_PROMPT = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 3 or the image is blank\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\nRespond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information."
+I_OBJECT_COUNT_PROMPT_MORE = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 7 or the image is blank\nB. 7\nC. 8\nD. 9\nE. 10\nF. More than 10\nConclude your answer with \"Answer: [only the option letter (A, B, C, D, E or F)]\"."
+
+I_OBJECT_COUNT_PROMPT_LESS = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 3 or the image is blank\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\nConclude your answer with \"Answer: [only the option letter (A, B, C, D, E or F)]\"."
 
 I_OBJECT_EXIST_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Answer only yes or no.\n"
 

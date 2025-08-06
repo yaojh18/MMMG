@@ -1,16 +1,22 @@
+from turtledemo.penrose import start
+
 from model_image import *
 from model_audio import *
 from model_interleaved import *
 from model_customized import *
 from interface import *
 import gc
+import os
 
 
 class EvalUnit:
     inst_name: str
+    start_idx = 20
 
     def __init__(self, model_name: str, inst_name=None, sample_size=4):
         self.inst_list = []
+        self.res_list = []
+        self.reserved_res_list = []
         self.model_name = model_name
         self.sample_size = sample_size
         if inst_name is not None:
@@ -18,11 +24,11 @@ class EvalUnit:
         with open(f'./seed_instruction/{self.inst_name}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 self.inst_list.append(json.loads(line.strip()))
-        self.inst_list = [inst.copy() for inst in self.inst_list for _ in range(self.sample_size)]
+        self.inst_list = [inst.copy() for inst in self.inst_list for _ in range(self.sample_size)][self.start_idx * self.sample_size:]
 
         if os.path.exists(f'./output/{model_name}/{self.inst_name}.jsonl'):
             self.load()
-            if len(self.inst_list) == len(self.res_list):
+            if len(self.inst_list) <= len(self.res_list):
                 return
         if model_name.startswith('RandomModel_'):
             model = eval(f'{model_name.split("_")[0]}(sample_size={self.sample_size})')
@@ -60,6 +66,8 @@ class EvalUnit:
                     audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
                 audio_list.append(audio)
             res['audio_list'] = audio_list
+        self.reserved_res_list = self.res_list[:self.start_idx * self.sample_size]
+        self.res_list = self.res_list[self.start_idx * self.sample_size:]
 
     def save(self, save_all=False):
         output_path = f'./output/{self.model_name}/'
@@ -71,7 +79,7 @@ class EvalUnit:
         output_list = []
         image_idx = 0
         audio_idx = 0
-        for res in self.res_list:
+        for res in self.reserved_res_list + self.res_list:
             output = res.copy()
             output['image_list'] = list(range(image_idx, image_idx + len(res['image_list'])))
             output['audio_list'] = list(range(audio_idx, audio_idx + len(res['audio_list'])))

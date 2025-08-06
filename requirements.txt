@@ -14,3 +14,4 @@ nltk
 jiwer
 transformers>=4.34.0
 evaluate>=0.2.0
+diffusers

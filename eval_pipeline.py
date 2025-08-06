@@ -57,11 +57,12 @@ class EvalPipeline:
             self.eval_df.to_csv(f'./output/{model_name}/{cat}_eval.csv', index=False)
 
     @staticmethod
-    def eval_map(model_name, task_name, sample_size):
+    def get_task_map():
         class m_defaultdict(defaultdict):
             def __missing__(self, key):
                 return key
-        task_name = m_defaultdict(str, {
+
+        return m_defaultdict(str, {
             'object inclusion': 'i_object_include', 'object exclusion': 'i_object_exclude',
             'object count': 'i_object_count', 'object reasoning': 'i_object_cot',
             'object attribution': 'i_object_attribute', 'comparison relation': 'i_relation_two',
@@ -71,13 +72,15 @@ class EvalPipeline:
             'double text rendering': 'i_ocr_two', 'multi-lingual text rendering': 'i_ocr_multi_lingual',
             'semantic consistency': 'i_consistency_semantic', 'multi-angle consistency': 'i_consistency_3d_object',
             'multi-view consistency': 'i_consistency_3d_scene', 'composition consistency': 'i_consistency_compose',
-            'decomposition consistency':'i_consistency_decompose', 'interleaved object adding':'i_edit_add',
+            'decomposition consistency': 'i_consistency_decompose', 'interleaved object adding': 'i_edit_add',
             'interleaved color modifying': 'i_edit_color', 'text editing': 'i_edit_text',
             'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove',
             'object_modifying': 'i_edit_object_modify', 'self count': 'it_coherence_count',
             'self color recognition': 'it_coherence_color', 'self size recognition': 'it_coherence_size',
-            'self text recognition': 'it_coherence_ocr', 'self relative spatial recognition': 'it_coherence_spacial_relative',
-            'self absolute spatial recognition': 'it_coherence_spacial_absolute', 'interleaved math': 'it_coherence_math',
+            'self text recognition': 'it_coherence_ocr',
+            'self relative spatial recognition': 'it_coherence_spacial_relative',
+            'self absolute spatial recognition': 'it_coherence_spacial_absolute',
+            'interleaved math': 'it_coherence_math',
             'interleaved code': 'it_coherence_code', 'text-image order': 'i_structure',
             'sound begin-end': 'a_sound_begin_end', 'sound inclusion': 'a_sound_include',
             'sound reasoning': 'a_sound_cot', 'sound silence': 'a_sound_silence',
@@ -87,7 +90,11 @@ class EvalPipeline:
             'voice replication': 'a_speech_imitate', 'transcript editing': 'a_speech_modify',
             'transcript generation': 'a_speech_constraint', 'conversation': 'a_consistency_conversation',
             'audio-text order': 'a_structure'
-        })[task_name]
+        })
+
+    @staticmethod
+    def eval_map(model_name, task_name, sample_size):
+        task_name = EvalPipeline.get_task_map()[task_name]
         task_name = ''.join([t.capitalize() if i > 0 else t.upper() for i, t in enumerate(task_name.split('_'))])
         task_name = task_name.replace('Ocr', 'OCR').replace('Cot', 'CoT').replace('3d', '3D')
         return eval(f"{task_name}(model_name='{model_name}', sample_size={sample_size})")
@@ -100,10 +107,15 @@ class EvalPipeline:
     def evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
-            task = self.eval_map(self.model_name, task_name, self.sample_size)
-            if pd.isna(row['accuracy']):
-                task.evaluate()
-            self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+            if os.path.exists(f'./output/{self.model_name}/{EvalPipeline.get_task_map()[task_name]}.jsonl') \
+                    or os.path.exists(f'./output/{self.model_name}/a_music_attribute.jsonl') and task_name in ['instrument inclusion', 'music tempo'] \
+                    or os.path.exists(f'./output/{self.model_name}/i_ocr_chinese.jsonl') and task_name == 'multi-lingual text rendering':
+                task = self.eval_map(self.model_name, task_name, self.sample_size)
+                if pd.isna(row['accuracy']):
+                    task.evaluate()
+                self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+            else:
+                self.eval_df.loc[index, 'accuracy'] = None
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
         agg_dict = {}
         for task_name in self.eval_agg_dict:
@@ -121,8 +133,8 @@ class EvalPipeline:
             task = self.eval_map(self.model_name, task_name, self.sample_size)
             if pd.isna(row['accuracy']):
                 task.evaluate()
-            if pd.isna(row['agreement']):
-                task.human_evaluate()
+            # if pd.isna(row['agreement']):
+            #     task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.loc[index, ['agreement', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
@@ -131,6 +143,9 @@ class EvalPipeline:
         self.eval_df['ci'] = [None] * len(self.eval_df)
         all_score = []
         for index, row in self.eval_df.iterrows():
+            if self.eval_df.loc[index, 'accuracy'] is None or np.isnan(self.eval_df.loc[index, 'accuracy']):
+                self.eval_df.loc[index, 'ci'] = None
+                continue
             task_name = row['task']
             task = self.eval_map(self.model_name, task_name, self.sample_size)
             eval_list = task.compute_accuracy(return_list=True)
@@ -166,16 +181,16 @@ class EvalBenchmark:
         self.model_list = base_model_list + model_list
 
     def rank_models(self, method='absolute'):
-        # ci_map = {}
+        ci_map = {}
         for model_name in self.model_list:
             pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
             pipeline.evaluate()
-            # ci_map[model_name] = pipeline.compute_ci()
+            ci_map[model_name] = pipeline.compute_ci()
             self.pipelines[model_name] = pipeline
         reshaped_dfs = []
         for model_name, pipeline in self.pipelines.items():
             temp_df = pipeline.eval_df[['task', 'accuracy']].copy()
-            # temp_df.loc[len(temp_df)] = ['ci', ci_map[model_name]]
+            temp_df.loc[len(temp_df)] = ['ci', ci_map[model_name]]
             temp_df.rename(columns={'accuracy': model_name}, inplace=True)
             reshaped_dfs.append(temp_df)
 
@@ -325,25 +340,27 @@ class EvalBenchmark:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='SeedX',
+    parser.add_argument('--model_name', type=str, default='GPT4o',
                         help='Name of the model. Make sure it is the same as your implemented class name.')
-    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
+    parser.add_argument('--category', type=str, default='a', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--job', type=str, default='ci', help='Job type: generate, evaluate, human')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
-    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    if args.job == 'evaluate':
-        pipeline.evaluate()
-    elif args.job == 'human':
-        pipeline.human_evaluate()
-    else:
-        pipeline.generate()
+    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    # if args.job == 'evaluate':
+    #     pipeline.evaluate()
+    # elif args.job == 'human':
+    #     pipeline.human_evaluate()
+    # elif args.job == 'ci':
+    #     pipeline.compute_ci()
+    # else:
+    #     pipeline.generate()
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
     # parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
-    #
-    # benchmark = EvalBenchmark(cat=args.category, args.sample_size)
-    # benchmark.rank_models()
+
+    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    benchmark.rank_models()
