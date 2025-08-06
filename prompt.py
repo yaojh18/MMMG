@@ -4,7 +4,7 @@ I_OBJECT_COUNT_PROMPT_LESS = lambda obj: f"How many {obj} are there in the given
 
 I_OBJECT_EXIST_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Answer only yes or no.\n"
 
-I_SCENE_PROMPT = lambda scene: f"Is the given image generally about {scene}? Answer only yes or no.\n"
+I_SCENE_PROMPT = lambda scene: f"Is the given image generally about {scene}? Explain step by step and end your answer with \"Yes\" or \"No\". Answer \"No\" if the image is blank.\n"
 
 I_OBJECT_EXIST_COT_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Explain step by step and end your answer with \"Yes\" or \"No\". Answer \"No\" if the image is blank.\n"
 

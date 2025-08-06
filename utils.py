@@ -22,7 +22,7 @@ from skimage.metrics import structural_similarity as ssim
 
 
 OPENAI_KEY = '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'
-GEMINI_KEY = 'AIzaSyD5TIL5-MtYTD66BO4c55HeMEDue9IdXmI'
+GEMINI_KEY = 'AIzaSyBEW41p3lgA3MG9oxExv5-fLdvCGXlrnyw'
 REPLICATE_KEY = 'r8_UK8hAuFDdTWdUVsHNtHAov6TaBDo8Vw1zph3t'
 RECRAFT_KEY = 'brbYCYRV7RNpIfTEneG3QA1Bll7vb55W8fnf03sT42jy2JdyikKW8ysIR02zGWz3'
 HF_KEY = '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'

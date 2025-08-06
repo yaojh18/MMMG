@@ -898,6 +898,6 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IObjectCount(model_name='GPT4o')
+    task = IObjectExclude(model_name='Imagen3')
     task.evaluate()
     print(task.compute_accuracy())
