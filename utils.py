@@ -530,6 +530,16 @@ def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
         cos_sim = F.cosine_similarity(embeddings, ref_embeddings)
     return cos_sim.tolist()
 
+# -----------------------
+# Bin Added (09/16/2025)
+# -----------------------
+def calculate_bleu_score(references, predictions):
+    import sacrebleu
+    scores = []
+    for r, g in zip(references, predictions):
+        bleu = sacrebleu.sentence_bleu(g, [r])  # g=generated, r=reference
+        scores.append(bleu.score / 100) # convert to [0,1]
+    return scores
 
 def text_instruction_following_verify(text_list, instruction_list):
     """
