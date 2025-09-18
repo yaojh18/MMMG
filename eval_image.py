@@ -179,13 +179,9 @@ class IObjectCoT(IObjectInclude):
     inst_name = 'i_object_cot'
     label_list = ("Yes", "No")
 
-    @staticmethod
-    def instruction_func(obj):
-        return I_OBJECT_EXIST_COT_PROMPT(obj)
 
-    @staticmethod
-    def human_instruction_func(obj_list):
-        return f"Is/Are there {obj_list[0]} in the given image?\n"
+class IObjectCommonSense(IObjectCoT):
+    inst_name = 'i_object_commonsense'
 
 
 class IObjectCount(IObject):
@@ -898,6 +894,6 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IObjectExclude(model_name='Imagen3')
+    task = IObjectCoT(model_name='GPT4o')
     task.evaluate()
     print(task.compute_accuracy())
