@@ -439,6 +439,45 @@ class ASpeechTranslate(EvalUnit):
     def compute_correlation(self):
         return -1.0, -1.0
 
+# -----------------------
+# Bin Added (09/18/2025)
+# -----------------------
+class ASpeechRetrieve(EvalUnit):
+    inst_name = 'a_speech_retrieve'
+    start_idx = 0
+    
+    def evaluate(self):
+        self.load_inst_mm()
+        audio_list = []    ## generated audio in English
+        ref_text_list = [] ## reference text in English
+        idx = 0
+        for data, inst in zip(self.res_list, self.inst_list):
+            if len(data['audio_list']) != 1:
+                data['auto_eval'] = FAILED_TOKEN
+                data['transcript'] = FAILED_TOKEN
+                continue
+            audio_list.append(data['audio_list'][0])
+            ref_text_list.append(inst['text'])
+            data['auto_eval'] = idx
+            data['transcript'] = idx
+            idx += 1
+        transcripts, wers = transcribe_speech(audio_list, ref_text_list)   ## generated text in English & accuracy
+        for data in self.res_list:
+            data['auto_eval'] = wers[data['auto_eval']] if data['auto_eval'] != FAILED_TOKEN else 0.0
+            data['transcript'] = transcripts[data['transcript']] if data['transcript'] != FAILED_TOKEN else ''
+        self.save()
+                
+    def human_evaluate(self):
+        pass
+
+    def compute_accuracy(self, return_list=False):
+        model_eval_list = [data['auto_eval'] for data in self.res_list]
+        if return_list:
+            return model_eval_list
+        return np.mean(model_eval_list)
+    
+    def compute_correlation(self):
+        return -1.0, -1.0
 
 class AMusicAttribute(EvalUnit):
     inst_name = 'a_music_attribute'
@@ -744,6 +783,6 @@ class AMusicExclude(EvalUnit):
 
 
 if __name__ == '__main__':
-    task = ASpeechTranslate(model_name='VoxInstructAgent')
+    task = ASpeechRetrieve(model_name='VoxInstructAgent')
     task.evaluate()
     print(task.compute_accuracy())
