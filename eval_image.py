@@ -182,6 +182,7 @@ class IObjectCoT(IObjectInclude):
 
 class IObjectCommonSense(IObjectCoT):
     inst_name = 'i_object_commonsense'
+    start_idx = 0
 
 
 class IObjectCount(IObject):
@@ -894,6 +895,7 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IObjectCoT(model_name='GPT4o')
+    task = IObjectCommonSense(model_name='GPT4o')
     task.evaluate()
     print(task.compute_accuracy())
+    print(task.compute_correlation())
