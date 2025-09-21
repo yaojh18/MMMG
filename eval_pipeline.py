@@ -169,7 +169,8 @@ class EvalBenchmark:
 
         if cat == 'i':
             base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3',
-                               'StableDiffusion3_5', 'SeedLlama', 'Anole', 'Gemini2', 'GPT4o']
+                               'StableDiffusion3_5', 'SeedLlama', 'Anole', 'Gemini2', 'GPT4o',
+                               'Show2', 'BLIP3o', 'Bagel', 'Janus', 'QwenImage']
         elif cat == 'it':
             base_model_list = ['SeedLlama', 'Anole', 'Gemini2', 'GeminiAgent', 'GPT4oAgent', 'HybridAgent']
         elif cat == 'a':

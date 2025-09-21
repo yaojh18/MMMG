@@ -44,11 +44,11 @@ class RandomModel(Model):
     @staticmethod
     def inst_map(inst_name):
         if inst_name.startswith('i_consistency') or inst_name.startswith('i_structure') or inst_name.startswith('it'):
-            return ['HybridAgent', 'GeminiAgent', 'Gemini2']
+            return ['HybridAgent', 'GeminiAgent', 'Gemini2', 'GPTImage']
         if inst_name.startswith('i_edit'):
-            return ['HybridAgent', 'Gemini2']
+            return ['HybridAgent', 'GeminiAgent', 'Gemini2', 'GPTImage']
         if inst_name.startswith('i'):
-            return ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3']
+            return ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'GPT4o']
         if inst_name.startswith('a_sound'):
             return ['StableAudio', 'AudioLDM2', 'AudioGen', 'Tango2', 'MakeAnAudio2']
         if inst_name.startswith('a_music'):

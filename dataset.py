@@ -1,4 +1,3 @@
-import cairosvg
 import os
 import random
 import shutil
@@ -11,18 +10,15 @@ from utils import *
 
 
 def sample_from_emu_edit():
-    raw_dataset = load_dataset('facebook/emu_edit_test_set')['test']
-    for task in ('text', 'add', 'remove', 'local'):
+    raw_dataset = load_dataset('facebook/emu_edit_test_set')
+    for task in ('text', ):
         dataset = []
-        for data in raw_dataset:
+        for data in raw_dataset['test']:
             if data['task'] == task:
                 dataset.append({
                     'instruction': data['instruction'],
                     'image_list': [data['image']],
-                    'input_caption': data['input_caption'],
-                    'output_caption': data['output_caption'],
                 })
-        dataset = random.sample(dataset, 60)
         output_path = f'./data/emuedit/'
         os.makedirs(output_path, exist_ok=True)
         os.makedirs(output_path + 'image/', exist_ok=True)
@@ -43,7 +39,7 @@ def sample_from_emu_edit():
 
 
 def label_image_editing_instruction():
-    for task in ('i_edit_object_add', ):
+    for task in ('i_edit_text_alter', ):
         dataset = []
         with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
@@ -65,7 +61,7 @@ def label_image_editing_instruction():
 
 
 def validate_image_editing_instruction():
-    for task in ('i_edit_object_add', ):
+    for task in ('i_edit_text_alter', ):
         dataset = []
         with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
@@ -139,6 +135,7 @@ def paraphrasing_dataset(file_name):
 
 
 def sample_from_star_vector():
+    import cairosvg
     dataset = load_dataset('starvector/svg-emoji')
     collected_data = []
     for data in dataset['test']:
@@ -210,4 +207,4 @@ def create_huggingface_dataset():
 
 
 if __name__ == '__main__':
-    create_huggingface_dataset()
+    label_image_editing_instruction()

@@ -793,7 +793,7 @@ class IEdit(EvalUnit):
                 continue
             origin_image = inst['image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
-            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            width_margin, height_margin = origin_image.size[0] // 20, origin_image.size[1] // 20
             bbox = (max(inst['bbox'][0] - width_margin, 0),
                     max(inst['bbox'][1] - height_margin, 0),
                     min(inst['bbox'][2] + width_margin, origin_image.size[0]),
@@ -817,7 +817,7 @@ class IEdit(EvalUnit):
                 continue
             origin_image = inst['image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
-            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            width_margin, height_margin = origin_image.size[0] // 20, origin_image.size[1] // 20
             bbox = (max(inst['bbox'][0] - width_margin, 0),
                     max(inst['bbox'][1] - height_margin, 0),
                     min(inst['bbox'][2] + width_margin, origin_image.size[0]),
@@ -839,8 +839,14 @@ class IEdit(EvalUnit):
         return super().compute_correlation()
 
 
-class IEditText(IEdit, IOCR):
-    inst_name = 'i_edit_text'
+class IEditTextAdd(IEdit, IOCR):
+    inst_name = 'i_edit_text_add'
+    start_idx = 0
+
+
+class IEditTextAlter(IEdit, IOCR):
+    inst_name = 'i_edit_text_alter'
+    start_idx = 0
 
 
 class IEditObjectAdd(IEdit, IObjectInclude):
@@ -854,6 +860,10 @@ class IEditObjectRemove(IEdit, IObjectExclude):
 class IEditObjectModify(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_modify'
     vlm = 'gemini'
+
+
+class IEditObjectAttribute(IEdit, IObjectInclude):
+    inst_name = 'i_edit_object_attribute'
 
 
 class IEditAdd(EvalUnit):
@@ -895,7 +905,8 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IObjectCommonSense(model_name='GPT4o')
-    task.evaluate()
+    task = IEditTextAlter(model_name='GPTImage')
+    # task.evaluate()
+    # task.human_evaluate()
     print(task.compute_accuracy())
     print(task.compute_correlation())
