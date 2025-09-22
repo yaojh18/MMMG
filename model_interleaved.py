@@ -850,3 +850,8 @@ class GPTImage(Model):
 
     def generate(self, query_list):
         return batch(self.generate_image, query_list, model_name=self.model_name)
+
+### TODO
+
+class Gemini2_5(GPTImage):
+    pass

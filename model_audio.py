@@ -250,24 +250,3 @@ class MakeAnAudio2(Model):
                 'audio_list': [audio],
             })
         return res_list
-
-
-class Suno(Model):
-    """
-    Remember to start localhost first
-    """
-
-    def generate(self, query_list):
-        import requests
-        output_list = []
-        url = "http://localhost:3000/api/custom_generate"
-        for query in tqdm(query_list):
-            response = requests.post(url, json={
-                "prompt": "",
-                "tags": query['instruction'],
-                "make_instrumental": False,
-                "wait_audio": True
-            }, headers={'Content-Type': 'application/json'})
-            res = response.json()
-            pass
-

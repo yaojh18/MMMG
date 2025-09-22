@@ -554,40 +554,32 @@ class BLIP3o(Model):
         return output_list
 
 
-class Showo(Model):
-    model_name = 'Showo'
-    command = "python3 inference_t2i.py config=configs/showo_demo_512x512.yaml batch_size=8 validation_prompts_file=./input/instructions.txt guidance_scale=5 generation_timesteps=50 mode=t2i"
+### TODO
+
+class Showo2(Model):
+    model_name = 'Showo2'
 
     def generate(self, query_list):
-        if os.path.exists(f'./models/{self.model_name}/input/'):
-            shutil.rmtree(f'./models/{self.model_name}/input/')
-        if os.path.exists(f'./models/{self.model_name}/output/'):
-            shutil.rmtree(f'./models/{self.model_name}/output/')
-        os.makedirs(f'./models/{self.model_name}/input/')
-        os.makedirs(f'./models/{self.model_name}/output/')
-
-        with open(f'./models/{self.model_name}/input/instructions.txt', 'w', encoding='utf-8') as f:
-            f.writelines([query['instruction'] + '\n' for query in query_list])
-        os.chdir(f"./models/{self.model_name}")
-        os.system(self.command)
-        os.chdir("../..")
-
-        res_list = []
-        for idx, query in enumerate(query_list):
-            res_list.append({
-                'query': query,
-                'response': IMAGE_TOKEN(0),
-                'image_list': [Image.open(f"./models/{self.model_name}/output/{idx}.png")],
-                'audio_list': [],
-            })
-        return res_list
+        pass
 
 
-class MMaDA(Showo):
-    model_name = 'MMaDA'
-    command = "python3 inference_t2i.py config=configs/mmada_demo.yaml batch_size=8 validation_prompts_file=./input/instructions.txt guidance_scale=3.5 generation_timesteps=15 mode=t2i"
+class QwenImage(Model):
+    model_name = 'QwenImage'
+
+    def generate(self, query_list):
+        pass
+
+class SeedReam4(Model):
+    model_name = 'SeedReam4'
+    def generate(self, query_list):
+        pass
 
 
-class SeedX(Showo):
-    model_name = 'SEED-X'
-    command = 'python3 src/inference/eval_text2img_seed_x_i.py'
+class Imagen4(Imagen3):
+    model_name = 'Imagen4'
+    def generate(self, query_list):
+        pass
+
+
+class Flux1Kontext(ReplicateModel):
+    pass

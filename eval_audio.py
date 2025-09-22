@@ -512,7 +512,7 @@ class AMusicAttribute(EvalUnit):
         # ClapScore audio-audio
         for data, inst in zip(res_list, inst_list):
             if len(data['audio_list']) != 1:
-                data['model_eval_instrument'] = 0.0
+                data['model_eval'] = 0.0
                 continue
             ref_audio_list = []
             for i in range(100):
@@ -520,7 +520,7 @@ class AMusicAttribute(EvalUnit):
                 if sr != SAMPLE_RATE:
                     ref_audio = librosa.resample(ref_audio, orig_sr=sr, target_sr=SAMPLE_RATE)
                 ref_audio_list.append(ref_audio)
-            data['model_eval_instrument'] = compute_clapscore_aa(data['audio_list'][0], ref_audio_list)
+            data['model_eval'] = compute_clapscore_aa(data['audio_list'][0], ref_audio_list)
         self.save()
 
     def evaluate_tempo(self):
@@ -604,14 +604,14 @@ class AMusicAttribute(EvalUnit):
         idx = 0
         for data in self.res_list:
             if len(data['audio_list']) != 1:
-                data['human_eval_instrument'] = FAILED_TOKEN
+                data['human_eval'] = FAILED_TOKEN
                 continue
             human_inst_list.append(f'What is the dominant instrument played the given audio?\n'
                             f'Reminder:\n'
                             f'1. Failed generation should be considered as none of the above.\n'
                             f'2. Choose multiple labels only when you are unsure or the given audio can fall into different types.')
             human_data_list.append(data)
-            data['human_eval_instrument'] = idx
+            data['human_eval'] = idx
             idx += 1
         interface = MultiLabelInterface(
             label_list=instruments,
@@ -623,11 +623,11 @@ class AMusicAttribute(EvalUnit):
         )
         interface.start()
         for data, inst in zip(res_list, inst_list):
-            if data['human_eval_instrument'] != FAILED_TOKEN:
-                data['human_eval_instrument'] = [instruments[i] for i in interface.eval_list[data['human_eval_instrument']]]
+            if data['human_eval'] != FAILED_TOKEN:
+                data['human_eval'] = [instruments[i] for i in interface.eval_list[data['human_eval']]]
             else:
-                data['human_eval_instrument'] = []
-            data['human_eval_score_instrument'] = float(inst['instrument'] in data['human_eval_instrument'])
+                data['human_eval'] = []
+            data['human_eval_score'] = float(inst['instrument'] in data['human_eval'])
         self.save()
 
     def human_evaluate_genre(self):
@@ -671,23 +671,7 @@ class AMusicAttribute(EvalUnit):
                 data['human_eval_genre'] = []
             data['human_eval_score_genre'] = float(inst['genre'] in data['human_eval_genre'])
         self.save()
-        
-    def compute_accuracy(self, threshold=0.62, return_list=False):
-        model_eval_list = [data['model_eval_genre'] for data in self.res_list if 'model_eval_genre' in data]
-        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
-        if return_list:
-            return model_eval_list
-        return np.mean(model_eval_list)
 
-    def compute_correlation(self, threshold=0.66):
-        model_eval_list = [data['model_eval_genre'] for data in self.res_list if 'model_eval_genre' in data]
-        human_eval_list = [data['human_eval_score_genre'] for data in self.res_list if 'human_eval_score_genre' in data]
-    
-        # # Optimal threshold
-        #threshold = find_optimal_threshold(model_eval_list, human_eval_list)
-
-        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
-        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
     
 class AMusicInstrument(EvalUnit):
     def __init__(self, model_name: str, sample_size=4):
@@ -701,7 +685,7 @@ class AMusicInstrument(EvalUnit):
         self.eval_unit.evaluate_instrument()
 
     def human_evaluate(self):
-        self.eval_unit.human_evaluate()
+        self.eval_unit.human_evaluate_instrument()
 
     def compute_accuracy(self, threshold=0.62, return_list=False):
         model_eval_list = [data['model_eval'] for data in self.eval_unit.res_list if 'model_eval' in data]
@@ -724,14 +708,7 @@ class AMusicInstrument(EvalUnit):
         self.eval_unit.save(save_all=save_all)
 
 
-class AMusicTempo(EvalUnit):
-    def __init__(self, model_name: str, sample_size=4):
-        self.eval_unit = AMusicAttribute(model_name=model_name, sample_size=sample_size)
-
-    @property
-    def res_list(self):
-        return self.eval_unit.res_list
-
+class AMusicTempo(AMusicInstrument):
     def evaluate(self):
         self.eval_unit.evaluate_tempo()
 
@@ -743,6 +720,31 @@ class AMusicTempo(EvalUnit):
 
     def save(self, save_all=False):
         self.eval_unit.save(save_all=save_all)
+
+
+class AMusicGenre(AMusicInstrument):
+    def evaluate(self):
+        self.eval_unit.evaluate_genre()
+
+    def human_evaluate(self):
+        self.eval_unit.human_evaluate_genre()
+
+    def compute_accuracy(self, threshold=0.66, return_list=False):
+        model_eval_list = [data['model_eval_genre'] for data in self.res_list if 'model_eval_genre' in data]
+        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        if return_list:
+            return model_eval_list
+        return np.mean(model_eval_list)
+
+    def compute_correlation(self, threshold=0.66):
+        model_eval_list = [data['model_eval_genre'] for data in self.res_list if 'model_eval_genre' in data]
+        human_eval_list = [data['human_eval_score_genre'] for data in self.res_list if 'human_eval_score_genre' in data]
+
+        # # Optimal threshold
+        # threshold = find_optimal_threshold(model_eval_list, human_eval_list)
+
+        model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
+        return calculate_agreement(model_eval_list, human_eval_list), calculate_pearson(model_eval_list, human_eval_list)
 
 
 class AMusicIntensity(EvalUnit):
@@ -874,6 +876,4 @@ class AMusicExclude(EvalUnit):
 
 
 if __name__ == '__main__':
-    task = AMusicExclude(model_name='MusicGen')
-    task.human_evaluate()
-    print(task.compute_correlation())
+    pass

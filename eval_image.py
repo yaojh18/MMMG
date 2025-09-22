@@ -906,8 +906,4 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IEditObjectAttribute(model_name='GPTImage')
-    # task.evaluate()
-    # task.human_evaluate()
-    print(task.compute_accuracy())
-    print(task.compute_correlation())
+    pass
