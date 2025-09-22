@@ -864,6 +864,7 @@ class IEditObjectModify(IEdit, IObjectInclude):
 
 class IEditObjectAttribute(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_attribute'
+    start_idx = 0
 
 
 class IEditAdd(EvalUnit):
@@ -905,7 +906,7 @@ class IEditColor(IEditAdd):
 
 
 if __name__ == '__main__':
-    task = IEditTextAlter(model_name='GPTImage')
+    task = IEditObjectAttribute(model_name='GPTImage')
     # task.evaluate()
     # task.human_evaluate()
     print(task.compute_accuracy())

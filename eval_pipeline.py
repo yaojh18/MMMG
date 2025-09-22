@@ -16,7 +16,7 @@ class EvalPipeline:
         self.sample_size = sample_size
         if cat == 'i':
             self.eval_agg_dict = {
-                'object': ['object inclusion', 'object exclusion', 'object count', 'object reasoning', 'object attribution'],
+                'object': ['object inclusion', 'object exclusion', 'object count', 'object knowledge', 'object commonsense', 'object attribution'],
                 'relation': ['comparison relation', 'universal relation', 'relative spatial relation', 'absolute spatial relation'],
                 'format': ['region fill', 'border fill'],
                 'text rendering': ['single text rendering', 'double text rendering', 'multi-lingual text rendering']
@@ -25,12 +25,20 @@ class EvalPipeline:
             self.eval_agg_dict = {
                 'consistency': ['semantic consistency', 'multi-angle consistency', 'multi-view consistency', 'composition consistency', 'decomposition consistency'],
                 'coherence': ['self count', 'self color recognition', 'self size recognition', 'self text recognition', 'self relative spatial recognition', 'self absolute spatial recognition', 'text-image order'],
-                'editing': ['interleaved object adding', 'interleaved color modifying', 'text editing', 'object adding', 'object removing', 'object_modifying'],
+                'editing': ['interleaved object adding', 'interleaved color modifying', 'text adding', 'text altering' ,'object adding', 'object removing', 'object replacing', 'object altering'],
                 'reasoning': ['interleaved math', 'interleaved code']
             }
         elif cat == 'a':
             self.eval_agg_dict = {
-                'sound': ['sound begin-end', 'sound inclusion', 'sound reasoning', 'sound silence'],
+                'sound': ['sound begin-end', 'sound inclusion', 'sound knowledge', 'sound silence'],
+                'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity']
+            }
+        elif cat == 'as':
+            self.eval_agg_dict = {
+                'sound': ['sound begin-end', 'sound inclusion', 'sound knowledge', 'sound silence'],
+            }
+        elif cat == 'am':
+            self.eval_agg_dict = {
                 'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity']
             }
         elif cat == 'at':
@@ -64,7 +72,7 @@ class EvalPipeline:
 
         return m_defaultdict(str, {
             'object inclusion': 'i_object_include', 'object exclusion': 'i_object_exclude',
-            'object count': 'i_object_count', 'object reasoning': 'i_object_cot',
+            'object count': 'i_object_count', 'object knowledge': 'i_object_cot', 'object commonsense': 'i_object_commonsense',
             'object attribution': 'i_object_attribute', 'comparison relation': 'i_relation_two',
             'universal relation': 'i_relation_all', 'relative spatial relation': 'i_spacial_relative',
             'absolute spatial relation': 'i_spacial_absolute', 'region fill': 'i_format_background',
@@ -73,9 +81,9 @@ class EvalPipeline:
             'semantic consistency': 'i_consistency_semantic', 'multi-angle consistency': 'i_consistency_3d_object',
             'multi-view consistency': 'i_consistency_3d_scene', 'composition consistency': 'i_consistency_compose',
             'decomposition consistency': 'i_consistency_decompose', 'interleaved object adding': 'i_edit_add',
-            'interleaved color modifying': 'i_edit_color', 'text editing': 'i_edit_text',
-            'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove',
-            'object_modifying': 'i_edit_object_modify', 'self count': 'it_coherence_count',
+            'interleaved color modifying': 'i_edit_color', 'text adding': 'i_edit_text_add', 'text_altering': 'i_edit_text_alter',
+            'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove', 'object altering': 'i_edit_object_attribute',
+            'object replacing': 'i_edit_object_modify', 'self count': 'it_coherence_count',
             'self color recognition': 'it_coherence_color', 'self size recognition': 'it_coherence_size',
             'self text recognition': 'it_coherence_ocr',
             'self relative spatial recognition': 'it_coherence_spacial_relative',
@@ -83,7 +91,7 @@ class EvalPipeline:
             'interleaved math': 'it_coherence_math',
             'interleaved code': 'it_coherence_code', 'text-image order': 'i_structure',
             'sound begin-end': 'a_sound_begin_end', 'sound inclusion': 'a_sound_include',
-            'sound reasoning': 'a_sound_cot', 'sound silence': 'a_sound_silence',
+            'sound knowledge': 'a_sound_cot', 'sound silence': 'a_sound_silence',
             'instrument inclusion': 'a_music_instrument', 'instrument exclusion': 'a_music_exclude',
             'music tempo': 'a_music_tempo', 'music intensity': 'a_music_intensity',
             'voice attribution': 'a_speech_attribute', 'multi-lingual speech': 'a_speech_chinese',

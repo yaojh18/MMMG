@@ -11,7 +11,7 @@ from utils import *
 
 def sample_from_emu_edit():
     raw_dataset = load_dataset('facebook/emu_edit_test_set')
-    for task in ('text', ):
+    for task in ('local', 'color'):
         dataset = []
         for data in raw_dataset['test']:
             if data['task'] == task:
@@ -39,7 +39,7 @@ def sample_from_emu_edit():
 
 
 def label_image_editing_instruction():
-    for task in ('i_edit_text_alter', ):
+    for task in ('i_edit_object_attribute', ):
         dataset = []
         with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
@@ -61,7 +61,7 @@ def label_image_editing_instruction():
 
 
 def validate_image_editing_instruction():
-    for task in ('i_edit_text_alter', ):
+    for task in ('i_edit_object_attribute', ):
         dataset = []
         with open(f'./seed_instruction/{task}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
@@ -207,4 +207,4 @@ def create_huggingface_dataset():
 
 
 if __name__ == '__main__':
-    label_image_editing_instruction()
+    validate_image_editing_instruction()

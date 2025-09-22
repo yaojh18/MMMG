@@ -702,6 +702,7 @@ class AMusicIntensity(EvalUnit):
 
 class AMusicExclude(EvalUnit):
     inst_name = 'a_music_exclude'
+    start_idx = 14
 
     def evaluate(self):
         # # ClapScore audio-text
@@ -783,6 +784,6 @@ class AMusicExclude(EvalUnit):
 
 
 if __name__ == '__main__':
-    task = ASpeechRetrieve(model_name='VoxInstructAgent')
-    task.evaluate()
-    print(task.compute_accuracy())
+    task = AMusicExclude(model_name='MusicGen')
+    task.human_evaluate()
+    print(task.compute_correlation())
