@@ -396,7 +396,7 @@ class MultiTurnAgent(Model):
 
 
 class Gemini2(Model):
-    model_name = 'gemini-2.0-flash-exp-image-generation'
+    model_name = 'gemini-2.0-flash-preview-image-generation'
     system_prompt = IT_AGENT_PROMPT
 
     def __init__(self):
@@ -457,115 +457,6 @@ class Gemini2(Model):
                 res_list.append({
                     "query": query,
                     "response": '',
-                    "image_list": [],
-                    "audio_list": [],
-                })
-
-        return res_list
-
-
-class Emu3(Model):
-    def __init__(self):
-        super().__init__()
-
-        from models.emu3.mllm.processing_emu3 import Emu3Processor
-        from transformers import AutoTokenizer, AutoModel, AutoImageProcessor, AutoModelForCausalLM
-        EMU_HUB = "BAAI/Emu3-Gen"
-        VQ_HUB = "BAAI/Emu3-VisionTokenizer"
-
-        self.model = AutoModelForCausalLM.from_pretrained(
-            EMU_HUB,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-            attn_implementation="flash_attention_2",
-            trust_remote_code=True,
-            token=HF_KEY,
-        ).eval()
-        self.tokenizer = AutoTokenizer.from_pretrained(EMU_HUB, trust_remote_code=True, padding_side="left", token=HF_KEY)
-        self.image_processor = AutoImageProcessor.from_pretrained(VQ_HUB, trust_remote_code=True, token=HF_KEY)
-        self.image_tokenizer = AutoModel.from_pretrained(VQ_HUB, device_map="cuda", trust_remote_code=True, token=HF_KEY).eval()
-        self.processor = Emu3Processor(self.image_processor, self.image_tokenizer, self.tokenizer)
-        self.system_prompt = IT_AGENT_PROMPT
-
-    def generate(self, query_list):
-        from transformers.generation import LogitsProcessorList, PrefixConstrainedLogitsProcessor, UnbatchedClassifierFreeGuidanceLogitsProcessor
-        from transformers.generation.configuration_utils import GenerationConfig
-
-        res_list = []
-        for query in tqdm(query_list):
-            try:
-                instruction = query.get("instruction", "")
-                images = query.get("image_list", [])
-
-                inputs = self.processor(
-                    text=f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + instruction,
-                    images=images,
-                    mode="G",
-                    ratio="1:1",
-                    image_area=self.model.config.image_area,
-                    return_tensors="pt",
-                    padding="longest",
-                )
-
-                h = inputs.image_size[:, 0]
-                w = inputs.image_size[:, 1]
-                constrained_fn = self.processor.build_prefix_constrained_fn(h, w)
-
-                logits_processor = LogitsProcessorList([
-                    UnbatchedClassifierFreeGuidanceLogitsProcessor(
-                        3.0,
-                        self.model,
-                    ),
-                    PrefixConstrainedLogitsProcessor(
-                        constrained_fn,
-                        num_beams=1,
-                    ),
-                ])
-
-                generation_config = GenerationConfig(
-                    use_cache=True,
-                    eos_token_id=self.model.config.eos_token_id,
-                    pad_token_id=self.model.config.pad_token_id,
-                    max_new_tokens=40960,
-                    do_sample=True,
-                    temperature=0.1,
-                    top_p=1.0
-                )
-
-                outputs = self.model.generate(
-                    inputs.input_ids.to("cuda"),
-                    generation_config=generation_config,
-                    logits_processor=logits_processor,
-                    attention_mask=inputs.attention_mask.to("cuda"),
-                )
-
-                decoded_outputs = self.processor.decode(outputs[0])
-
-                parts, image_list = [], []
-                image_count = 0
-                for item in decoded_outputs:
-                    if isinstance(item, Image.Image):
-                        token = IMAGE_TOKEN(image_count)
-                        parts.append(token)
-                        image_list.append(item)
-                        image_count += 1
-                    else:
-                        parts.append(str(item))
-
-                response = "".join(parts)
-
-                res_list.append({
-                    "query": query,
-                    "response": response,
-                    "image_list": image_list,
-                    "audio_list": [],
-                })
-
-            except Exception as e:
-                print(f"Error generating content for query: {query}. Error: {e}")
-                res_list.append({
-                    "query": query,
-                    "response": "",
                     "image_list": [],
                     "audio_list": [],
                 })
@@ -810,8 +701,7 @@ class QwenOmni(Model):
                         "content": [
                             {
                                 "type": "text",
-                                "text": "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable "
-                                        "of perceiving auditory and visual inputs, as well as generating text and speech."
+                                "text": "You are Qwen, a virtual human developed by the Qwen Team, Alibaba Group, capable of perceiving auditory and visual inputs, as well as generating text and speech."
                             }
                         ],
                     },
@@ -866,28 +756,29 @@ class QwenOmni(Model):
 
 class Anole(Model):
     def generate(self, query_list):
-        
         ## make input file
         os.makedirs('./models/Anole/input/', exist_ok=True)
         with open('./models/Anole/input/prompt.jsonl', 'w', encoding='utf-8') as file:
             for query in query_list:
                 file.write(json.dumps(query['instruction'])+'\n')
-                     
+
         ## make output file
         if os.path.exists('./models/Anole/output/'):
             shutil.rmtree('./models/Anole/output/')
             os.makedirs("./models/Anole/output/")
 
         ## use model
-        os.system("""python ./models/Anole/interleaved_generation.py""")
-        
+        os.chdir("./models/Anole/")
+        os.system("""python ./interleaved_generation.py""")
+        os.chdir("../..")
+
         ## process output
         output_list = []
         for idx, query in enumerate(query_list):
             dir_path = f'./models/Anole/output/{idx}/'
             with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
                 text = ''.join(f.readlines())
-                
+
             image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
             output_list.append({
                 'query': query,
@@ -960,3 +851,8 @@ class GPTImage(Model):
 
     def generate(self, query_list):
         return batch(self.generate_image, query_list, model_name=self.model_name)
+
+### TODO
+
+class Gemini2_5(GPTImage):
+    pass

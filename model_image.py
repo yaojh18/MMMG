@@ -1,5 +1,9 @@
 import requests
 import io
+import random
+import shutil
+import gc
+from collections import OrderedDict
 
 from model import Model
 from utils import *
@@ -488,3 +492,94 @@ class Bagel(Model):
             })
         return output_list
 
+
+class BLIP3o(Model):
+    def __init__(self):
+        from diffusers import DiffusionPipeline
+        from models.BLIP3o.blip3o.utils import disable_torch_init
+        from models.BLIP3o.blip3o.mm_utils import get_model_name_from_path
+        from models.BLIP3o.blip3o.model.builder import load_pretrained_model
+
+        torch.cuda.empty_cache()
+        model_path = './models/BLIP3o/checkpoint'
+        diffusion_path = model_path + "/diffusion-decoder"
+
+        disable_torch_init()
+        model_path = os.path.expanduser(model_path)
+        model_name = get_model_name_from_path(model_path)
+        tokenizer, multi_model, context_len = load_pretrained_model(model_path, None, model_name)
+
+        self.pipe = DiffusionPipeline.from_pretrained(
+            diffusion_path,
+            custom_pipeline="pipeline_llava_gen",
+            torch_dtype=torch.bfloat16,
+            use_safetensors=True,
+            variant="bf16",
+            multimodal_encoder=multi_model,
+            tokenizer=tokenizer,
+            safety_checker=None
+        )
+
+        self.pipe.vae.to('cuda')
+        self.pipe.unet.to('cuda')
+
+    def generate(self, query_list):
+        from models.BLIP3o.blip3o.conversation import conv_templates
+
+        def add_template(prompt):
+            conv = conv_templates['qwen'].copy()
+            conv.append_message(conv.roles[0], prompt[0])
+            conv.append_message(conv.roles[1], None)
+            prompt = conv.get_prompt()
+            return [prompt]
+
+        def set_global_seed(seed=42):
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+
+        set_global_seed()
+        output_list = []
+        for query in tqdm(query_list):
+            gen_img = self.pipe(add_template([f"Please generate image based on the following caption: "
+                                              f"{query['instruction']}"]), guidance_scale=3.0)
+            output_list.append({
+                'query': query,
+                'response': IMAGE_TOKEN(0) if gen_img.image is not None else '',
+                'image_list': [gen_img.image] if gen_img.image is not None else [],
+                'audio_list': []
+            })
+        return output_list
+
+
+### TODO
+
+class Showo2(Model):
+    model_name = 'Showo2'
+
+    def generate(self, query_list):
+        pass
+
+
+class QwenImage(Model):
+    model_name = 'QwenImage'
+
+    def generate(self, query_list):
+        pass
+
+class SeedReam4(Model):
+    model_name = 'SeedReam4'
+    def generate(self, query_list):
+        pass
+
+
+class Imagen4(Imagen3):
+    model_name = 'Imagen4'
+    def generate(self, query_list):
+        pass
+
+
+class Flux1Kontext(ReplicateModel):
+    pass

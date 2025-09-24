@@ -1,3 +1,4 @@
+import re
 import unicodedata
 
 from eval import *
@@ -40,6 +41,8 @@ class IObject(EvalUnit):
                 queries.append(form_mm_query(I_SCENE_PROMPT(obj_list[0]), images=data['image_list'], model=self.vlm))
                 queries += [form_mm_query(self.instruction_func(obj), images=data['image_list'], model=self.vlm)
                             for obj in obj_list[1:]]
+            elif self.inst_name == 'i_object_count':
+                queries.append(form_mm_query(self.instruction_func(inst), images=data['image_list'], model=self.vlm))
             else:
                 queries += [form_mm_query(self.instruction_func(obj), images=data['image_list'], model=self.vlm)
                             for obj in obj_list]
@@ -53,7 +56,7 @@ class IObject(EvalUnit):
 
         if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['model_eval'] = [float(data['model_eval'][0] == (inst['count'] - 2))]
+                data['model_eval'] = [float(data['model_eval'][0] == ((inst['count'] - 2) if inst['count'] <= 6 else (inst['count'] - 6)))]
             self.save()
 
     def human_evaluate(self):
@@ -82,7 +85,7 @@ class IObject(EvalUnit):
 
         if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['human_eval'] = [float(data['human_eval'] == (inst['count'] - 2))]
+                data['human_eval'] = [float(data['human_eval'] == ((inst['count'] - 2) if inst['count'] <= 6 else (inst['count'] - 6)))]
             self.save()
 
     def compute_accuracy(self, return_list=False):
@@ -175,23 +178,19 @@ class IObjectCoT(IObjectInclude):
     inst_name = 'i_object_cot'
     label_list = ("Yes", "No")
 
-    @staticmethod
-    def instruction_func(obj):
-        return I_OBJECT_EXIST_COT_PROMPT(obj)
 
-    @staticmethod
-    def human_instruction_func(obj_list):
-        return f"Is/Are there {obj_list[0]} in the given image?\n"
+class IObjectCommonsense(IObjectCoT):
+    inst_name = 'i_object_commonsense'
 
 
 class IObjectCount(IObject):
     inst_name = 'i_object_count'
-    vlm = 'openai'
+    vlm = 'gemini'
     label_list = ("A. Less than 3", "B. 3", "C. 4", "D. 5", "E. 6", "F. More than 6")
 
     @staticmethod
-    def instruction_func(obj):
-        return I_OBJECT_COUNT_PROMPT(obj)
+    def instruction_func(inst):
+        return I_OBJECT_COUNT_PROMPT_LESS(inst['object']) if inst['count'] <= 6 else I_OBJECT_COUNT_PROMPT_MORE(inst['object'])
 
     @staticmethod
     def human_instruction_func(obj_list):
@@ -199,7 +198,12 @@ class IObjectCount(IObject):
 
     @staticmethod
     def gpt_judge_process_func(res: str):
-        return ord(res.strip().lower()[0]) - 97
+        match = re.search('Answer:\s*([A-F])', res)
+        if match is not None:
+            return ord(match.group(1).upper()) - ord('A')
+        else:
+            return 0
+
 
     @staticmethod
     def human_judge_process_func(res: str):
@@ -787,7 +791,7 @@ class IEdit(EvalUnit):
                 continue
             origin_image = inst['image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
-            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            width_margin, height_margin = origin_image.size[0] // 20, origin_image.size[1] // 20
             bbox = (max(inst['bbox'][0] - width_margin, 0),
                     max(inst['bbox'][1] - height_margin, 0),
                     min(inst['bbox'][2] + width_margin, origin_image.size[0]),
@@ -811,7 +815,7 @@ class IEdit(EvalUnit):
                 continue
             origin_image = inst['image_list'][0].convert('RGB')
             image = data['image_list'][0].resize(origin_image.size)
-            width_margin, height_margin = origin_image.size[0] // 10, origin_image.size[1] // 10
+            width_margin, height_margin = origin_image.size[0] // 20, origin_image.size[1] // 20
             bbox = (max(inst['bbox'][0] - width_margin, 0),
                     max(inst['bbox'][1] - height_margin, 0),
                     min(inst['bbox'][2] + width_margin, origin_image.size[0]),
@@ -833,8 +837,12 @@ class IEdit(EvalUnit):
         return super().compute_correlation()
 
 
-class IEditText(IEdit, IOCR):
-    inst_name = 'i_edit_text'
+class IEditTextAdd(IEdit, IOCR):
+    inst_name = 'i_edit_text_add'
+
+
+class IEditTextAlter(IEdit, IOCR):
+    inst_name = 'i_edit_text_alter'
 
 
 class IEditObjectAdd(IEdit, IObjectInclude):
@@ -848,6 +856,10 @@ class IEditObjectRemove(IEdit, IObjectExclude):
 class IEditObjectModify(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_modify'
     vlm = 'gemini'
+
+
+class IEditObjectAttribute(IEdit, IObjectInclude):
+    inst_name = 'i_edit_object_attribute'
 
 
 class IEditAdd(EvalUnit):

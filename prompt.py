@@ -1,8 +1,10 @@
-I_OBJECT_COUNT_PROMPT = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 3 or the image is blank\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\nRespond only with the option letter (A, B, C, D, E or F). Do not provide any explanation, reasoning, or additional information."
+I_OBJECT_COUNT_PROMPT_MORE = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 7 or the image is blank\nB. 7\nC. 8\nD. 9\nE. 10\nF. More than 10\nConclude your answer with \"Answer: [only the option letter (A, B, C, D, E or F)]\"."
+
+I_OBJECT_COUNT_PROMPT_LESS = lambda obj: f"How many {obj} are there in the given image? Choose from the options:\nA. Less than 3 or the image is blank\nB. 3\nC. 4\nD. 5\nE. 6\nF. More than 6\nConclude your answer with \"Answer: [only the option letter (A, B, C, D, E or F)]\"."
 
 I_OBJECT_EXIST_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Answer only yes or no.\n"
 
-I_SCENE_PROMPT = lambda scene: f"Is the given image generally about {scene}? Answer only yes or no.\n"
+I_SCENE_PROMPT = lambda scene: f"Is the given image generally about {scene}? Explain step by step and end your answer with \"Yes\" or \"No\". Answer \"No\" if the image is blank.\n"
 
 I_OBJECT_EXIST_COT_PROMPT = lambda obj: f"Is/Are there {obj} in the given image? Explain step by step and end your answer with \"Yes\" or \"No\". Answer \"No\" if the image is blank.\n"
 
@@ -30,17 +32,17 @@ with open('./prompts/llm_as_a_judge.txt', 'r', encoding='utf-8') as f:
 with open('./prompts/vlm_as_a_judge.txt', 'r', encoding='utf-8') as f:
     VLM_AS_A_JUDGE_PROMPT = ''.join(f.readlines())
 
-with open('./prompts/i_interleaved_agent.txt', 'r', encoding='utf-8') as f:
+with open('prompts/i_interleaved_agent.txt', 'r', encoding='utf-8') as f:
     IT_AGENT_PROMPT = ''.join(f.readlines())
 
-with open('./prompts/a_interleaved_agent.txt', 'r', encoding='utf-8') as f:
+with open('prompts/a_interleaved_agent.txt', 'r', encoding='utf-8') as f:
     AT_AGENT_PROMPT = ''.join(f.readlines())
 
-with open('./prompts/i_gen_edit_agent.txt', 'r', encoding='utf-8') as f:
+with open('prompts/i_gen_edit_agent.txt', 'r', encoding='utf-8') as f:
     I_ALL_AGENT_PROMPT = ''.join(f.readlines())
 
-with open('./prompts/i_multi_turn_agent.txt', 'r', encoding='utf-8') as f:
+with open('prompts/i_multi_turn_agent.txt', 'r', encoding='utf-8') as f:
     I_MULTI_TURN_AGENT_PROMPT = ''.join(f.readlines())
 
-with open('./prompts/a_multi_turn_agent.txt', 'r', encoding='utf-8') as f:
+with open('prompts/a_multi_turn_agent.txt', 'r', encoding='utf-8') as f:
     A_MULTI_TURN_AGENT_PROMPT = ''.join(f.readlines())

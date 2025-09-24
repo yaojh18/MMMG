@@ -1,3 +1,4 @@
+import gc
 import os
 import time
 import base64
@@ -17,6 +18,7 @@ from io import BytesIO
 from typing import Callable
 from torchvision import transforms
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from skimage.metrics import structural_similarity as ssim
 
 
 OPENAI_KEY = os.getenv('OPENAI_KEY')
@@ -31,7 +33,7 @@ SAMPLE_RATE = 22050
 VISION_MODEL = 'openai'
 
 
-def batch(func_name: Callable, data_list, num_worker=8, **kwargs):
+def batch(func_name: Callable, data_list, num_worker=16, **kwargs):
     with ProcessPoolExecutor(max_workers=num_worker) as executor:
         futures = [executor.submit(func_name, index, data, **kwargs) for index, data in enumerate(data_list)]
         res_dict = collections.defaultdict(None)
@@ -128,7 +130,7 @@ def form_qwen_mm_query(text, images=[], audios=[]):
 def query_vlm(query_list, model=''):
     model = model or VISION_MODEL
     if model == 'gemini':
-        return batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0)
+        return batch(query_gemini, query_list, model='gemini-2.5-pro', temperature=0.0)
     elif model == 'openai':
         return batch(query_openai, query_list, model='chatgpt-4o-latest', temperature=0.0)
     elif model == 'qwen':
@@ -194,10 +196,13 @@ def query_gemini(index, query, model, temperature):
 def batch_query_qwen(query_list, temperature):
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from qwen_vl_utils import process_vision_info
+    if len(query_list) == 0:
+        return []
+    torch.cuda.empty_cache()
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto"
+        "Qwen/Qwen2.5-VL-72B-Instruct", torch_dtype="auto", device_map="auto", load_in_8bit=True,
     )
-    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-72B-Instruct")
     output_list = []
     generation_kwargs = {'max_new_tokens': 256}
     if temperature == 0.0:
@@ -227,11 +232,13 @@ def batch_query_qwen(query_list, temperature):
         output_list.append(processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )[0])
+    del model
+    del processor
+    gc.collect()
     return output_list
 
 
 def calculate_ssim(img1, img2):
-    from skimage.metrics import structural_similarity as ssim
     if img1.size != img2.size:
         img1 = img1.resize(img2.size, Image.LANCZOS)
     img1 = np.array(img1)
@@ -525,6 +532,16 @@ def calculate_speech_similarity(audio_list, ref_audio_list, batch_size=8):
         cos_sim = F.cosine_similarity(embeddings, ref_embeddings)
     return cos_sim.tolist()
 
+# -----------------------
+# Bin Added (09/16/2025)
+# -----------------------
+def calculate_bleu_score(references, predictions):
+    import sacrebleu
+    scores = []
+    for r, g in zip(references, predictions):
+        bleu = sacrebleu.sentence_bleu(g, [r])  # g=generated, r=reference
+        scores.append(bleu.score / 100) # convert to [0,1]
+    return scores
 
 def text_instruction_following_verify(text_list, instruction_list):
     """

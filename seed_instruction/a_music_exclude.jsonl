@@ -12,3 +12,9 @@
 {"instruction": "Generate a grand classical concerto without a piano.", "instrument": "piano", "instruction_para": "Compose a grand classical concerto that does not include a piano."}
 {"instruction": "Generate a spicy flamenco performance without a guitar.", "instrument": "guitar", "instruction_para": "Create a fiery flamenco performance that does not include a guitar."}
 {"instruction": "Generate a lively classical without a saxophone.", "instrument": "saxophone", "instruction_para": "Create an energetic classical piece that does not include a saxophone."}
+{"instruction": "Generate a soulful R&B ballad without a saxophone.", "instrument": "saxophone", "instruction_para": "Create a heartfelt R&B ballad that does not include a saxophone."}
+{"instruction": "Generate a traditional country song without a piano.", "instrument": "piano", "instruction_para": "Compose a classic country music piece that excludes the use of a piano."}
+{"instruction": "Generate an acoustic folk song without a guitar.", "instrument": "guitar", "instruction_para": "Create a melodic acoustic folk song that does not include a guitar."}
+{"instruction": "Generate a Celtic folk dance without a flute.", "instrument": "flute", "instruction_para": "Create a spirited Celtic folk dance that does not include a flute."}
+{"instruction": "Generate an island reggae track without drums.", "instrument": "drums", "instruction_para": "Create a laid-back island reggae track that excludes drums."}
+{"instruction": "Generate a European waltz without an accordion.", "instrument": "accordion", "instruction_para": "Compose a graceful European folk waltz that does not include an accordion."}

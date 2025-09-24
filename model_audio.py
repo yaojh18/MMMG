@@ -2,6 +2,8 @@ import random
 import shutil
 import string
 
+import numpy as np
+
 from model import Model
 from utils import *
 
@@ -250,3 +252,9 @@ class MakeAnAudio2(Model):
                 'audio_list': [audio],
             })
         return res_list
+
+
+# TODO
+class GeminiAudio(Model):
+    def generate(self, query_list):
+        pass

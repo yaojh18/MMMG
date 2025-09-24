@@ -10,13 +10,13 @@ from collections import defaultdict
 
 class EvalPipeline:
     def __init__(self, model_name, cat='i', sample_size=1):
-        assert cat in ['i', 'it', 'a', 'at', 'quick_test']
+        assert cat in ['i', 'it', 'a', 'at', 'quick_test', 'am', 'as']
         self.model_name = model_name
         self.cat = cat
         self.sample_size = sample_size
         if cat == 'i':
             self.eval_agg_dict = {
-                'object': ['object inclusion', 'object exclusion', 'object count', 'object reasoning', 'object attribution'],
+                'object': ['object inclusion', 'object exclusion', 'object count', 'object knowledge', 'object commonsense', 'object attribution'],
                 'relation': ['comparison relation', 'universal relation', 'relative spatial relation', 'absolute spatial relation'],
                 'format': ['region fill', 'border fill'],
                 'text rendering': ['single text rendering', 'double text rendering', 'multi-lingual text rendering']
@@ -25,19 +25,27 @@ class EvalPipeline:
             self.eval_agg_dict = {
                 'consistency': ['semantic consistency', 'multi-angle consistency', 'multi-view consistency', 'composition consistency', 'decomposition consistency'],
                 'coherence': ['self count', 'self color recognition', 'self size recognition', 'self text recognition', 'self relative spatial recognition', 'self absolute spatial recognition', 'text-image order'],
-                'editing': ['interleaved object adding', 'interleaved color modifying', 'text editing', 'object adding', 'object removing', 'object_modifying'],
+                'editing': ['interleaved object adding', 'interleaved color modifying', 'text adding', 'text altering' ,'object adding', 'object removing', 'object replacing', 'object altering'],
                 'reasoning': ['interleaved math', 'interleaved code']
             }
         elif cat == 'a':
             self.eval_agg_dict = {
-                'sound': ['sound begin-end', 'sound inclusion', 'sound reasoning', 'sound silence'],
-                'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity']
+                'sound': ['sound begin-end', 'sound inclusion', 'sound knowledge', 'sound silence'],
+                'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity', 'music genre']
+            }
+        elif cat == 'as':
+            self.eval_agg_dict = {
+                'sound': ['sound begin-end', 'sound inclusion', 'sound knowledge', 'sound silence'],
+            }
+        elif cat == 'am':
+            self.eval_agg_dict = {
+                'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity', 'music genre']
             }
         elif cat == 'at':
             self.eval_agg_dict = {
                 'voice': ['voice attribution', 'multi-lingual speech', 'voice replication'],
                 'transcript': ['transcript editing', 'transcript generation'],
-                'coherence': ['conversation', 'audio-text order']
+                'coherence': ['conversation', 'audio-text order', 'speech translation', 'speech retrieval']
             }
         elif cat == 'quick_test':
             self.eval_agg_dict = {'object': ['object adding']}
@@ -57,13 +65,14 @@ class EvalPipeline:
             self.eval_df.to_csv(f'./output/{model_name}/{cat}_eval.csv', index=False)
 
     @staticmethod
-    def eval_map(model_name, task_name, sample_size):
+    def get_task_map():
         class m_defaultdict(defaultdict):
             def __missing__(self, key):
                 return key
-        task_name = m_defaultdict(str, {
+
+        return m_defaultdict(str, {
             'object inclusion': 'i_object_include', 'object exclusion': 'i_object_exclude',
-            'object count': 'i_object_count', 'object reasoning': 'i_object_cot',
+            'object count': 'i_object_count', 'object knowledge': 'i_object_cot', 'object commonsense': 'i_object_commonsense',
             'object attribution': 'i_object_attribute', 'comparison relation': 'i_relation_two',
             'universal relation': 'i_relation_all', 'relative spatial relation': 'i_spacial_relative',
             'absolute spatial relation': 'i_spacial_absolute', 'region fill': 'i_format_background',
@@ -71,23 +80,30 @@ class EvalPipeline:
             'double text rendering': 'i_ocr_two', 'multi-lingual text rendering': 'i_ocr_multi_lingual',
             'semantic consistency': 'i_consistency_semantic', 'multi-angle consistency': 'i_consistency_3d_object',
             'multi-view consistency': 'i_consistency_3d_scene', 'composition consistency': 'i_consistency_compose',
-            'decomposition consistency':'i_consistency_decompose', 'interleaved object adding':'i_edit_add',
-            'interleaved color modifying': 'i_edit_color', 'text editing': 'i_edit_text',
-            'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove',
-            'object_modifying': 'i_edit_object_modify', 'self count': 'it_coherence_count',
+            'decomposition consistency': 'i_consistency_decompose', 'interleaved object adding': 'i_edit_add',
+            'interleaved color modifying': 'i_edit_color', 'text adding': 'i_edit_text_add', 'text altering': 'i_edit_text_alter',
+            'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove', 'object altering': 'i_edit_object_attribute',
+            'object replacing': 'i_edit_object_modify', 'self count': 'it_coherence_count',
             'self color recognition': 'it_coherence_color', 'self size recognition': 'it_coherence_size',
-            'self text recognition': 'it_coherence_ocr', 'self relative spatial recognition': 'it_coherence_spacial_relative',
-            'self absolute spatial recognition': 'it_coherence_spacial_absolute', 'interleaved math': 'it_coherence_math',
+            'self text recognition': 'it_coherence_ocr',
+            'self relative spatial recognition': 'it_coherence_spacial_relative',
+            'self absolute spatial recognition': 'it_coherence_spacial_absolute',
+            'interleaved math': 'it_coherence_math',
             'interleaved code': 'it_coherence_code', 'text-image order': 'i_structure',
             'sound begin-end': 'a_sound_begin_end', 'sound inclusion': 'a_sound_include',
-            'sound reasoning': 'a_sound_cot', 'sound silence': 'a_sound_silence',
+            'sound knowledge': 'a_sound_cot', 'sound silence': 'a_sound_silence',
             'instrument inclusion': 'a_music_instrument', 'instrument exclusion': 'a_music_exclude',
-            'music tempo': 'a_music_tempo', 'music intensity': 'a_music_intensity',
+            'music tempo': 'a_music_tempo', 'music intensity': 'a_music_intensity', 'music genre': 'a_music_genre',
             'voice attribution': 'a_speech_attribute', 'multi-lingual speech': 'a_speech_chinese',
             'voice replication': 'a_speech_imitate', 'transcript editing': 'a_speech_modify',
+            'speech translation': 'a_speech_translate', 'speech retrieval': 'a_speech_retrieve',
             'transcript generation': 'a_speech_constraint', 'conversation': 'a_consistency_conversation',
             'audio-text order': 'a_structure'
-        })[task_name]
+        })
+
+    @staticmethod
+    def eval_map(model_name, task_name, sample_size):
+        task_name = EvalPipeline.get_task_map()[task_name]
         task_name = ''.join([t.capitalize() if i > 0 else t.upper() for i, t in enumerate(task_name.split('_'))])
         task_name = task_name.replace('Ocr', 'OCR').replace('Cot', 'CoT').replace('3d', '3D')
         return eval(f"{task_name}(model_name='{model_name}', sample_size={sample_size})")
@@ -97,12 +113,20 @@ class EvalPipeline:
             task_name = row['task']
             self.eval_map(self.model_name, task_name, self.sample_size)
 
+    @staticmethod
+    def has_evaluate(res_list):
+        return all(['model_eval' in data or 'auto_eval' in data for data in res_list])
+
+    @staticmethod
+    def has_human_evaluate(res_list):
+        return all(['human_eval' in data or 'human_eval_score' in data for data in res_list])
+
     def evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(self.model_name, task_name, self.sample_size)
-            if pd.isna(row['accuracy']):
-                task.evaluate()
+            # if not self.has_evaluate(task.res_list):
+            task.evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
         agg_dict = {}
@@ -119,9 +143,9 @@ class EvalPipeline:
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(self.model_name, task_name, self.sample_size)
-            if pd.isna(row['accuracy']):
+            if not self.has_evaluate(task.res_list):
                 task.evaluate()
-            if pd.isna(row['agreement']):
+            if not self.has_human_evaluate(task.res_list):
                 task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.loc[index, ['agreement', 'correlation']] = task.compute_correlation()
@@ -131,6 +155,9 @@ class EvalPipeline:
         self.eval_df['ci'] = [None] * len(self.eval_df)
         all_score = []
         for index, row in self.eval_df.iterrows():
+            if self.eval_df.loc[index, 'accuracy'] is None or np.isnan(self.eval_df.loc[index, 'accuracy']):
+                self.eval_df.loc[index, 'ci'] = None
+                continue
             task_name = row['task']
             task = self.eval_map(self.model_name, task_name, self.sample_size)
             eval_list = task.compute_accuracy(return_list=True)
@@ -147,35 +174,56 @@ class EvalPipeline:
 
 class EvalBenchmark:
     def __init__(self, model_list=[], cat='i', sample_size=4):
-        assert cat in ['i', 'it', 'a', 'at']
+        assert cat in ['i', 'it', 'a', 'at', 'am', 'as']
         self.cat = cat
         self.sample_size = sample_size
         self.pipelines = {}
 
         if cat == 'i':
             base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3',
-                               'StableDiffusion3_5', 'SeedLlama', 'Anole', 'Gemini2', 'GPT4o']
+                               'StableDiffusion3_5', 'Gemini2', 'GPT4o', 'BLIP3o', 'Janus',
+                               # 'Bagel',  'Show2', 'QwenImage', 'SeedReam4', 'Imagen4', 'Flux1Kontext', 'Gemini2_5'
+                               ]
         elif cat == 'it':
-            base_model_list = ['SeedLlama', 'Anole', 'Gemini2', 'GeminiAgent', 'GPT4oAgent', 'HybridAgent']
+            base_model_list = ['SeedLlama', 'Anole', 'GPT4oAgent', 'HybridAgent', 'Gemini2', 'GPTImage',
+                               # 'Gemini2_5'
+                               ]
         elif cat == 'a':
+            base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2', 'MusicGen', 'TangoMusic', 'YuE',
+                               # 'GeminiAudio'
+                               ]
+        elif cat == 'am':
+            base_model_list = ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE',
+                               # 'GeminiAudio'
+                               ]
+        elif cat == 'as':
             base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2',
-                               'MusicGen', 'TangoMusic', 'YuE']
+                               # 'GeminiAudio'
+                               ]
         else:
-            base_model_list = ['SpiritLM', 'VoxInstructAgent', 'VoiceLDMAgent']
+            base_model_list = ['SpiritLM', 'VoxInstructAgent', 'VoiceLDMAgent',
+                               # 'GeminiSpeech'
+                               ]
 
         self.model_list = base_model_list + model_list
 
+    def evaluate(self):
+        for model_name in self.model_list:
+            print('Evaluating model', model_name)
+            pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
+            pipeline.evaluate()
+
     def rank_models(self, method='absolute'):
-        # ci_map = {}
+        ci_map = {}
         for model_name in self.model_list:
             pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
             pipeline.evaluate()
-            # ci_map[model_name] = pipeline.compute_ci()
+            ci_map[model_name] = pipeline.compute_ci()
             self.pipelines[model_name] = pipeline
         reshaped_dfs = []
         for model_name, pipeline in self.pipelines.items():
             temp_df = pipeline.eval_df[['task', 'accuracy']].copy()
-            # temp_df.loc[len(temp_df)] = ['ci', ci_map[model_name]]
+            temp_df.loc[len(temp_df)] = ['ci', ci_map[model_name]]
             temp_df.rename(columns={'accuracy': model_name}, inplace=True)
             reshaped_dfs.append(temp_df)
 
@@ -325,25 +373,28 @@ class EvalBenchmark:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='Dalle3',
+    parser.add_argument('--model_name', type=str, default='Gemini2',
                         help='Name of the model. Make sure it is the same as your implemented class name.')
     parser.add_argument('--category', type=str, default='quick_test', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
+    print('Running pipeline for model:', args.model_name)
     pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
     if args.job == 'evaluate':
         pipeline.evaluate()
     elif args.job == 'human':
         pipeline.human_evaluate()
+    elif args.job == 'ci':
+        pipeline.compute_ci()
     else:
         pipeline.generate()
 
     # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    # parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
     # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
     # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    # benchmark.rank_models()
+    # benchmark.evaluate()

@@ -32,7 +32,7 @@ Option 2: Reference audio
   A. Reference to previously generated audio:
   - Format: <audio_style=#N> where N is the sequential number (starting from 0) of previous audio generated
   - Example: "<audio_style=#3>" references the fourth audio you've generated in this conversation
-  - IMPORTANT: You can only reference audio that doesn't itself reference previous audio (to avoid circular references)
+  - IMPORTANT: You can only reference audio that doesn't itself reference previous audio (to avoid circular references); you should not reference audios when the task involves speech translation or context location, instead, you should use descriptive text.
 
   B. Reference to user-provided audio:
   - Format: <audio_style=N> where N is the sequential number (starting from 0) of the audio in user's instruction
