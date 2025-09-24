@@ -28,13 +28,13 @@
 {"instruction": "Generate a warm country music.", "genre": "country", "instruction_para": "Generate a warm country music."}
 {"instruction": "Generate a groovy reggae music.", "genre": "reggae", "instruction_para": "Generate a groovy reggae music."}
 {"instruction": "Generate a graceful classical music.", "genre": "classical", "instruction_para": "Generate a graceful classical music."}
-{"instruction": "Generate a smooth, mellow jazz music at 72 BPM.", "genre": "jazz", "tempo": 72, "instruction_para": "Generate a smooth, mellow jazz music at 72 BPM."}
-{"instruction": "Generate a graceful, serene classical music at 62 BPM.", "genre": "classical", "tempo": 62, "instruction_para": "Generate a graceful, serene classical music at 62 BPM."}
-{"instruction": "Generate a heartfelt, rustic country music at 88 BPM.", "genre": "country", "tempo": 88, "instruction_para": "Generate a heartfelt, rustic country music at 88 BPM."}
+{"instruction": "Generate a smooth, mellow jazz music at 75 BPM.", "genre": "jazz", "tempo": 75, "instruction_para": "Generate a smooth, mellow jazz music at 75 BPM."}
+{"instruction": "Generate a graceful, serene classical music at 65 BPM.", "genre": "classical", "tempo": 65, "instruction_para": "Generate a graceful, serene classical music at 65 BPM."}
+{"instruction": "Generate a heartfelt, rustic country music at 90 BPM.", "genre": "country", "tempo": 90, "instruction_para": "Generate a heartfelt, rustic country music at 90 BPM."}
 {"instruction": "Generate a groovy, vibrant disco music at 120 BPM.", "genre": "disco", "tempo": 120, "instruction_para": "Generate a groovy, vibrant disco music at 120 BPM."}
 {"instruction": "Generate an intense, heavy metal music at 150 BPM.", "genre": "metal", "tempo": 150, "instruction_para": "Generate an intense, heavy metal music at 150 BPM."}
 {"instruction": "Generate a lively, swinging jazz music at 95 BPM.", "genre": "jazz", "tempo": 95, "instruction_para": "Generate a lively, swinging jazz music at 95 BPM."}
-{"instruction": "Generate a majestic, calming classical music at 58 BPM.", "genre": "classical", "tempo": 58, "instruction_para": "Generate a majestic, calming classical music at 58 BPM."}
+{"instruction": "Generate a majestic, calming classical music at 55 BPM.", "genre": "classical", "tempo": 55, "instruction_para": "Generate a majestic, calming classical music at 55 BPM."}
 {"instruction": "Generate an upbeat, cheerful country music at 105 BPM.", "genre": "country", "tempo": 105, "instruction_para": "Generate an upbeat, cheerful country music at 105 BPM."}
 {"instruction": "Generate a funky, energetic disco music at 125 BPM.", "genre": "disco", "tempo": 125, "instruction_para": "Generate a funky, energetic disco music at 125 BPM."}
-{"instruction": "Generate a catchy, uplifting reggae music at 72 BPM.", "genre": "reggae", "tempo": 72, "instruction_para": "Generate a catchy, uplifting reggae music at 72 BPM."}
+{"instruction": "Generate a catchy, uplifting reggae music at 75 BPM.", "genre": "reggae", "tempo": 75, "instruction_para": "Generate a catchy, uplifting reggae music at 75 BPM."}

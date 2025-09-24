@@ -11,9 +11,9 @@ import os
 
 class EvalUnit:
     inst_name: str
-    start_idx = 20
+    start_idx = 0
 
-    def __init__(self, model_name: str, inst_name=None, sample_size=4):
+    def __init__(self, model_name: str, inst_name=None, sample_size=4, start_idx=None):
         self.inst_list = []
         self.res_list = []
         self.reserved_res_list = []
@@ -21,6 +21,8 @@ class EvalUnit:
         self.sample_size = sample_size
         if inst_name is not None:
             self.inst_name = inst_name
+        if start_idx is not None:
+            self.start_idx = start_idx
         with open(f'./seed_instruction/{self.inst_name}.jsonl', 'r', encoding='utf-8') as file:
             for line in file:
                 self.inst_list.append(json.loads(line.strip()))
@@ -32,7 +34,7 @@ class EvalUnit:
                 return
         if model_name.startswith('RandomModel_'):
             model = eval(f'{model_name.split("_")[0]}(sample_size={self.sample_size})')
-            self.res_list = model.generate(self.inst_name)
+            self.res_list = model.generate(self.inst_name, start_idx=self.start_idx)
         else:
             model = eval(f'{model_name}()')
             query_list = []
@@ -57,7 +59,8 @@ class EvalUnit:
         for res in self.res_list:
             image_list = []
             for image_name in res['image_list']:
-                image_list.append(Image.open(f'./output/{self.model_name}/image/{self.inst_name}_{image_name}.png'))
+                with Image.open(f'./output/{self.model_name}/image/{self.inst_name}_{image_name}.png') as image:
+                    image_list.append(image.copy())
             res['image_list'] = image_list
             audio_list = []
             for audio_name in res['audio_list']:

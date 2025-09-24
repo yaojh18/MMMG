@@ -396,7 +396,7 @@ class MultiTurnAgent(Model):
 
 
 class Gemini2(Model):
-    model_name = 'gemini-2.0-flash-exp-image-generation'
+    model_name = 'gemini-2.0-flash-preview-image-generation'
     system_prompt = IT_AGENT_PROMPT
 
     def __init__(self):
@@ -756,28 +756,29 @@ class QwenOmni(Model):
 
 class Anole(Model):
     def generate(self, query_list):
-        
         ## make input file
         os.makedirs('./models/Anole/input/', exist_ok=True)
         with open('./models/Anole/input/prompt.jsonl', 'w', encoding='utf-8') as file:
             for query in query_list:
                 file.write(json.dumps(query['instruction'])+'\n')
-                     
+
         ## make output file
         if os.path.exists('./models/Anole/output/'):
             shutil.rmtree('./models/Anole/output/')
             os.makedirs("./models/Anole/output/")
 
         ## use model
-        os.system("""python ./models/Anole/interleaved_generation.py""")
-        
+        os.chdir("./models/Anole/")
+        os.system("""python ./interleaved_generation.py""")
+        os.chdir("../..")
+
         ## process output
         output_list = []
         for idx, query in enumerate(query_list):
             dir_path = f'./models/Anole/output/{idx}/'
             with open(dir_path + 'response.txt', 'r', encoding='utf-8') as f:
                 text = ''.join(f.readlines())
-                
+
             image_list = [Image.open(dir_path + f) for f in os.listdir(dir_path) if f.endswith(".png")]
             output_list.append({
                 'query': query,

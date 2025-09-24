@@ -10,7 +10,7 @@ from collections import defaultdict
 
 class EvalPipeline:
     def __init__(self, model_name, cat='i', sample_size=1):
-        assert cat in ['i', 'it', 'a', 'at', 'quick_test']
+        assert cat in ['i', 'it', 'a', 'at', 'quick_test', 'am', 'as']
         self.model_name = model_name
         self.cat = cat
         self.sample_size = sample_size
@@ -45,7 +45,7 @@ class EvalPipeline:
             self.eval_agg_dict = {
                 'voice': ['voice attribution', 'multi-lingual speech', 'voice replication'],
                 'transcript': ['transcript editing', 'transcript generation'],
-                'coherence': ['conversation', 'audio-text order', 'transcript generation', 'speech retrieval']
+                'coherence': ['conversation', 'audio-text order', 'speech translation', 'speech retrieval']
             }
         elif cat == 'quick_test':
             self.eval_agg_dict = {'object': ['object adding']}
@@ -81,7 +81,7 @@ class EvalPipeline:
             'semantic consistency': 'i_consistency_semantic', 'multi-angle consistency': 'i_consistency_3d_object',
             'multi-view consistency': 'i_consistency_3d_scene', 'composition consistency': 'i_consistency_compose',
             'decomposition consistency': 'i_consistency_decompose', 'interleaved object adding': 'i_edit_add',
-            'interleaved color modifying': 'i_edit_color', 'text adding': 'i_edit_text_add', 'text_altering': 'i_edit_text_alter',
+            'interleaved color modifying': 'i_edit_color', 'text adding': 'i_edit_text_add', 'text altering': 'i_edit_text_alter',
             'object adding': 'i_edit_object_add', 'object removing': 'i_edit_object_remove', 'object altering': 'i_edit_object_attribute',
             'object replacing': 'i_edit_object_modify', 'self count': 'it_coherence_count',
             'self color recognition': 'it_coherence_color', 'self size recognition': 'it_coherence_size',
@@ -96,7 +96,7 @@ class EvalPipeline:
             'music tempo': 'a_music_tempo', 'music intensity': 'a_music_intensity', 'music genre': 'a_music_genre',
             'voice attribution': 'a_speech_attribute', 'multi-lingual speech': 'a_speech_chinese',
             'voice replication': 'a_speech_imitate', 'transcript editing': 'a_speech_modify',
-            'speech translation': 'a_speech_translate', 'speech retrieval': 'a_speech_retrieval',
+            'speech translation': 'a_speech_translate', 'speech retrieval': 'a_speech_retrieve',
             'transcript generation': 'a_speech_constraint', 'conversation': 'a_consistency_conversation',
             'audio-text order': 'a_structure'
         })
@@ -113,19 +113,19 @@ class EvalPipeline:
             task_name = row['task']
             self.eval_map(self.model_name, task_name, self.sample_size)
 
+    @staticmethod
+    def has_evaluate(res_list):
+        return all(['model_eval' in data or 'auto_eval' in data for data in res_list])
+
+    @staticmethod
+    def has_human_evaluate(res_list):
+        return all(['human_eval' in data or 'human_eval_score' in data for data in res_list])
+
     def evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
-            # if os.path.exists(f'./output/{self.model_name}/{EvalPipeline.get_task_map()[task_name]}.jsonl') \
-            #         or os.path.exists(f'./output/{self.model_name}/a_music_attribute.jsonl') and task_name in ['instrument inclusion', 'music tempo'] \
-            #         or os.path.exists(f'./output/{self.model_name}/i_ocr_chinese.jsonl') and task_name == 'multi-lingual text rendering':
-            #     task = self.eval_map(self.model_name, task_name, self.sample_size)
-            #     if pd.isna(row['accuracy']):
-            #         task.evaluate()
-            #     self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
-            # else:
-            #     self.eval_df.loc[index, 'accuracy'] = None
             task = self.eval_map(self.model_name, task_name, self.sample_size)
+            # if not self.has_evaluate(task.res_list):
             task.evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
@@ -143,10 +143,10 @@ class EvalPipeline:
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
             task = self.eval_map(self.model_name, task_name, self.sample_size)
-            if pd.isna(row['accuracy']):
+            if not self.has_evaluate(task.res_list):
                 task.evaluate()
-            # if pd.isna(row['agreement']):
-            #     task.human_evaluate()
+            if not self.has_human_evaluate(task.res_list):
+                task.human_evaluate()
             self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
             self.eval_df.loc[index, ['agreement', 'correlation']] = task.compute_correlation()
             self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
@@ -174,24 +174,44 @@ class EvalPipeline:
 
 class EvalBenchmark:
     def __init__(self, model_list=[], cat='i', sample_size=4):
-        assert cat in ['i', 'it', 'a', 'at']
+        assert cat in ['i', 'it', 'a', 'at', 'am', 'as']
         self.cat = cat
         self.sample_size = sample_size
         self.pipelines = {}
 
         if cat == 'i':
             base_model_list = ['Imagen3', 'Recraft3', 'LumaPhoton', 'Flux1_1Pro', 'Ideogram2', 'Dalle3',
-                               'StableDiffusion3_5', 'SeedLlama', 'Anole', 'Gemini2', 'GPT4o',
-                               'BLIP3o', 'Bagel', 'Janus', 'Show2', 'QwenImage', 'SeedReam4', 'Imagen4', 'Flux1Kontext']
+                               'StableDiffusion3_5', 'Gemini2', 'GPT4o', 'BLIP3o', 'Janus',
+                               # 'Bagel',  'Show2', 'QwenImage', 'SeedReam4', 'Imagen4', 'Flux1Kontext', 'Gemini2_5'
+                               ]
         elif cat == 'it':
-            base_model_list = ['SeedLlama', 'Anole', 'GPT4oAgent', 'HybridAgent', 'Gemini2', 'GPTImage', 'Gemini2_5']
+            base_model_list = ['SeedLlama', 'Anole', 'GPT4oAgent', 'HybridAgent', 'Gemini2', 'GPTImage',
+                               # 'Gemini2_5'
+                               ]
         elif cat == 'a':
+            base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2', 'MusicGen', 'TangoMusic', 'YuE',
+                               # 'GeminiAudio'
+                               ]
+        elif cat == 'am':
+            base_model_list = ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE',
+                               # 'GeminiAudio'
+                               ]
+        elif cat == 'as':
             base_model_list = ['StableAudio', 'AudioLDM2', 'AudioGen', 'MakeAnAudio2', 'Tango2',
-                               'MusicGen', 'TangoMusic', 'YuE']
+                               # 'GeminiAudio'
+                               ]
         else:
-            base_model_list = ['SpiritLM', 'VoxInstructAgent', 'VoiceLDMAgent']
+            base_model_list = ['SpiritLM', 'VoxInstructAgent', 'VoiceLDMAgent',
+                               # 'GeminiSpeech'
+                               ]
 
         self.model_list = base_model_list + model_list
+
+    def evaluate(self):
+        for model_name in self.model_list:
+            print('Evaluating model', model_name)
+            pipeline = EvalPipeline(model_name, self.cat, self.sample_size)
+            pipeline.evaluate()
 
     def rank_models(self, method='absolute'):
         ci_map = {}
@@ -352,29 +372,29 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    parser.add_argument('--model_name', type=str, default='GPT4o',
-                        help='Name of the model. Make sure it is the same as your implemented class name.')
-    parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
+    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    # parser.add_argument('--model_name', type=str, default='RandomModel_0',
+    #                     help='Name of the model. Make sure it is the same as your implemented class name.')
+    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
+    # parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
+    # args = parser.parse_args()
+    #
+    # print('Running pipeline for model:', args.model_name)
+    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    # if args.job == 'evaluate':
+    #     pipeline.evaluate()
+    # elif args.job == 'human':
+    #     pipeline.human_evaluate()
+    # elif args.job == 'ci':
+    #     pipeline.compute_ci()
+    # else:
+    #     pipeline.generate()
+
+    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
+    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
-    print('Running pipeline for model:', args.model_name)
-    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    if args.job == 'evaluate':
-        pipeline.evaluate()
-    elif args.job == 'human':
-        pipeline.human_evaluate()
-    elif args.job == 'ci':
-        pipeline.compute_ci()
-    else:
-        pipeline.generate()
-
-    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    # parser.add_argument('--category', type=str, default='asp', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
-    # args = parser.parse_args()
-
-    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    # benchmark.rank_models()
+    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    benchmark.evaluate()

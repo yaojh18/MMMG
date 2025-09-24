@@ -44,24 +44,24 @@ class RandomModel(Model):
     @staticmethod
     def inst_map(inst_name):
         if inst_name.startswith('i_consistency') or inst_name.startswith('i_structure') or inst_name.startswith('it') or inst_name.startswith('i_edit'):
-            return ['HybridAgent', 'GPTAgent', 'Gemini2', 'GPTImage']
+            return ['HybridAgent', 'GPT4oAgent', 'Gemini2', 'GPTImage']
         if inst_name.startswith('i'):
-            return ['Imagen3', 'Recraft3', 'LumaPhoton', 'GPT4o', 'Bagel', 'Janus']
+            return ['Imagen3', 'Recraft3', 'LumaPhoton', 'GPT4o', 'Gemini2', 'Janus']
         if inst_name.startswith('a_sound'):
             return ['StableAudio', 'AudioLDM2', 'AudioGen', 'Tango2', 'MakeAnAudio2']
         if inst_name.startswith('a_music'):
-            return ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic', 'YuE']
+            return ['StableAudio', 'AudioLDM2', 'MusicGen', 'TangoMusic']
         if inst_name.startswith('a_speech') or inst_name.startswith('a_consistency') or inst_name.startswith('a_structure'):
             return ['VoxInstructAgent', 'VoiceLDMAgent']
         raise NotImplementedError(inst_name)
 
-    def generate(self, inst_name):
+    def generate(self, inst_name, start_idx):
         from eval import EvalUnit
         model_name_list = self.inst_map(inst_name)
         for model_name in model_name_list:
             if not os.path.exists(f'./output/{model_name}/{inst_name}.jsonl'):
                 raise FileNotFoundError(f'./output/{model_name}/{inst_name}.jsonl')
-        model_list = [EvalUnit(model_name=model_name, inst_name=inst_name, sample_size=4)
+        model_list = [EvalUnit(model_name=model_name, inst_name=inst_name, sample_size=4, start_idx=start_idx)
                       for model_name in model_name_list]
         output_list = []
         random.seed(0)
@@ -93,7 +93,8 @@ class VoxInstruct(Model):
         input_list = []
         for idx, query in enumerate(query_list):
             if query['reference'] != '':
-                shutil.copy(query['reference'], f'./models/VoxInstruct/input/{idx}.wav')
+                audio, sr = librosa.load(query['reference'], duration=60)
+                sf.write(f'./models/VoxInstruct/input/{idx}.wav', audio, sr)
                 input_list.append(f"{idx}|{int(language != 'english')}|\"{query['reference_text']} {query['text']}\"|./input/{idx}.wav\n")
             else:
                 input_list.append(f"{idx}|{int(language != 'english')}|{query['style']}, \"{query['text']}\"|\n")

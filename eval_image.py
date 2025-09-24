@@ -86,7 +86,7 @@ class IObject(EvalUnit):
 
         if self.inst_name == 'i_object_count':
             for data, inst in zip(self.res_list, self.inst_list):
-                data['human_eval'] = [float(data['human_eval'] == (inst['count'] - 2))]
+                data['human_eval'] = [float(data['human_eval'] == ((inst['count'] - 2) if inst['count'] <= 6 else (inst['count'] - 6)))]
             self.save()
 
     def compute_accuracy(self, return_list=False):
@@ -180,9 +180,8 @@ class IObjectCoT(IObjectInclude):
     label_list = ("Yes", "No")
 
 
-class IObjectCommonSense(IObjectCoT):
+class IObjectCommonsense(IObjectCoT):
     inst_name = 'i_object_commonsense'
-    start_idx = 0
 
 
 class IObjectCount(IObject):
@@ -202,7 +201,7 @@ class IObjectCount(IObject):
     def gpt_judge_process_func(res: str):
         match = re.search('Answer:\s*([A-F])', res)
         if match is not None:
-            return ord(match.group(1).upper()) - ord('A') + 1
+            return ord(match.group(1).upper()) - ord('A')
         else:
             return 0
 
@@ -841,12 +840,10 @@ class IEdit(EvalUnit):
 
 class IEditTextAdd(IEdit, IOCR):
     inst_name = 'i_edit_text_add'
-    start_idx = 0
 
 
 class IEditTextAlter(IEdit, IOCR):
     inst_name = 'i_edit_text_alter'
-    start_idx = 0
 
 
 class IEditObjectAdd(IEdit, IObjectInclude):
@@ -864,7 +861,6 @@ class IEditObjectModify(IEdit, IObjectInclude):
 
 class IEditObjectAttribute(IEdit, IObjectInclude):
     inst_name = 'i_edit_object_attribute'
-    start_idx = 0
 
 
 class IEditAdd(EvalUnit):

@@ -25,7 +25,7 @@ OPENAI_KEY = 'sk-proj-KYoeAD7Bhko_sV_7gs_ZHoq1aGpcD9B50IZ13hVDHPvfgmVzSw0oZB802o
 GEMINI_KEY = 'AIzaSyBEW41p3lgA3MG9oxExv5-fLdvCGXlrnyw'
 REPLICATE_KEY = 'r8_UK8hAuFDdTWdUVsHNtHAov6TaBDo8Vw1zph3t'
 RECRAFT_KEY = 'brbYCYRV7RNpIfTEneG3QA1Bll7vb55W8fnf03sT42jy2JdyikKW8ysIR02zGWz3'
-HF_KEY = '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'
+HF_KEY = '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'
 IMAGE_TOKEN = lambda x: f'<image_start><image_{x}><image_end>'
 AUDIO_TOKEN = lambda x: f'<audio_start><audio_{x}><audio_end>'
 FAILED_TOKEN = '<none>'
@@ -33,7 +33,7 @@ SAMPLE_RATE = 22050
 VISION_MODEL = 'openai'
 
 
-def batch(func_name: Callable, data_list, num_worker=8, **kwargs):
+def batch(func_name: Callable, data_list, num_worker=16, **kwargs):
     with ProcessPoolExecutor(max_workers=num_worker) as executor:
         futures = [executor.submit(func_name, index, data, **kwargs) for index, data in enumerate(data_list)]
         res_dict = collections.defaultdict(None)
@@ -196,6 +196,8 @@ def query_gemini(index, query, model, temperature):
 def batch_query_qwen(query_list, temperature):
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from qwen_vl_utils import process_vision_info
+    if len(query_list) == 0:
+        return []
     torch.cuda.empty_cache()
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         "Qwen/Qwen2.5-VL-72B-Instruct", torch_dtype="auto", device_map="auto", load_in_8bit=True,

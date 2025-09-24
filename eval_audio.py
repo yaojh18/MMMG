@@ -403,7 +403,6 @@ class ASpeechConstraint(ASpeechModify):
 # -----------------------
 class ASpeechTranslate(EvalUnit):
     inst_name = 'a_speech_translate'
-    start_idx = 0
     
     def evaluate(self):
         self.load_inst_mm()
@@ -444,7 +443,6 @@ class ASpeechTranslate(EvalUnit):
 # -----------------------
 class ASpeechRetrieve(EvalUnit):
     inst_name = 'a_speech_retrieve'
-    start_idx = 0
     
     def evaluate(self):
         self.load_inst_mm()
@@ -481,7 +479,6 @@ class ASpeechRetrieve(EvalUnit):
 
 class AMusicAttribute(EvalUnit):
     inst_name = 'a_music_attribute'
-    start_idx = 20
 
     def evaluate_instrument(self):
         res_list = []
@@ -504,7 +501,7 @@ class AMusicAttribute(EvalUnit):
         # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {inst['instrument']}? Explain step "
         #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[data['audio_list'][0]])
         #               for data, inst in zip(res_list, inst_list)]
-        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
+        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro', temperature=0.0, num_worker=1)
         # for idx, data in enumerate(res_list):
         #     data['model_eval'] = float('yes' in responses[idx].strip().lower()[-20:])
         # self.save()
@@ -557,6 +554,22 @@ class AMusicAttribute(EvalUnit):
         if len(inst_list) == 0:
             return
 
+        # # ClapScore audio-text
+        # labels = [inst['genre'] + ' music' for inst in inst_list]
+        # scores = compute_clapscore_at([data['audio_list'][0] for data in res_list], labels)
+        # for data, score in zip(res_list, scores):
+        #     data['model_eval_genre'] = score
+        # self.save()
+
+        # # Gemini-2.0
+        # query_list = [form_gemini_mm_query(f"Does the given music obviously belong to {inst['genre']} music? Explain step "
+        #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[data['audio_list'][0]])
+        #               for data, inst in zip(res_list, inst_list)]
+        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro', temperature=0.0, num_worker=1)
+        # for idx, data in enumerate(res_list):
+        #     data['model_eval_genre'] = float('yes' in responses[idx].strip().lower()[-20:])
+        # self.save()
+
         # ClapScore audio-audio
         for data, inst in zip(res_list, inst_list):
             if len(data['audio_list']) != 1:
@@ -592,12 +605,6 @@ class AMusicAttribute(EvalUnit):
         if len(inst_list) == 0:
             return
         instruments = tuple(set(inst['instrument'] for inst in inst_list)) + ('None of the above',)
-        back_list = []
-        for instrument in instruments[: -1]:
-            back_list.append([])
-            back_list[-1].append(instrument)
-            for i in range(5):
-                back_list[-1].append(f'./seed_instruction/audio/{instrument}_{i}.wav')
 
         human_inst_list = []
         human_data_list = []
@@ -617,7 +624,6 @@ class AMusicAttribute(EvalUnit):
             label_list=instruments,
             eval_inst_list=human_inst_list,
             data_list=human_data_list,
-            back_list=back_list,
             multi_choice=True,
             mm_type='a'
         )
@@ -729,14 +735,14 @@ class AMusicGenre(AMusicInstrument):
     def human_evaluate(self):
         self.eval_unit.human_evaluate_genre()
 
-    def compute_accuracy(self, threshold=0.66, return_list=False):
+    def compute_accuracy(self, threshold=0.69, return_list=False):
         model_eval_list = [data['model_eval_genre'] for data in self.res_list if 'model_eval_genre' in data]
         model_eval_list = [float(model_eval > threshold) for model_eval in model_eval_list]
         if return_list:
             return model_eval_list
         return np.mean(model_eval_list)
 
-    def compute_correlation(self, threshold=0.66):
+    def compute_correlation(self, threshold=0.69):
         model_eval_list = [data['model_eval_genre'] for data in self.res_list if 'model_eval_genre' in data]
         human_eval_list = [data['human_eval_score_genre'] for data in self.res_list if 'human_eval_score_genre' in data]
 
@@ -765,14 +771,17 @@ class AMusicIntensity(EvalUnit):
             norm_intensity = (intensity - min(intensity)) / (max(intensity) - min(intensity))
             times = librosa.frames_to_time(np.arange(len(norm_intensity)), sr=SAMPLE_RATE)
             peaks = list(find_peaks(norm_intensity, distance=4)[0])
-            if peaks[0] >= 5:
-                peaks.insert(0, 0)
-            if peaks[-1] < len(norm_intensity) - 5:
-                peaks.append(len(norm_intensity) - 1)
-            slope, _, _, _, stderr = linregress(times[peaks], norm_intensity[peaks])
-            trend = 'fade in' if (slope > 0.18 and stderr < 0.04) else \
-                ('fade out' if (slope < -0.18 and stderr < 0.04) else FAILED_TOKEN)
-            data['auto_eval'] = float(trend == inst['intensity'][1])
+            if len(peaks) > 0:
+                if peaks[0] >= 5:
+                    peaks.insert(0, 0)
+                if peaks[-1] < len(norm_intensity) - 5:
+                    peaks.append(len(norm_intensity) - 1)
+                slope, _, _, _, stderr = linregress(times[peaks], norm_intensity[peaks])
+                trend = 'fade in' if (slope > 0.18 and stderr < 0.04) else \
+                    ('fade out' if (slope < -0.18 and stderr < 0.04) else FAILED_TOKEN)
+                data['auto_eval'] = float(trend == inst['intensity'][1])
+            else:
+                data['auto_eval'] = 0.0
 
             # # Visualize
             # from matplotlib import pyplot as plt
@@ -794,7 +803,6 @@ class AMusicIntensity(EvalUnit):
 
 class AMusicExclude(EvalUnit):
     inst_name = 'a_music_exclude'
-    start_idx = 14
 
     def evaluate(self):
         # # ClapScore audio-text
@@ -808,11 +816,12 @@ class AMusicExclude(EvalUnit):
         # query_list = [form_gemini_mm_query(f"Does the given music obviously use the instrument {inst['instrument']}? Explain step "
         #                                    f"by step and end your answer with \"Yes\" or \"No\".", audios=[data['audio_list'][0]])
         #               for data, inst in zip(self.res_list, self.inst_list)]
-        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro-preview-03-25', temperature=0.0, num_worker=1)
+        # responses = batch(query_gemini, query_list, model='gemini-2.5-pro', temperature=0.0, num_worker=1)
         # for idx, data in enumerate(self.res_list):
         #     data['model_eval'] = float('yes' in responses[idx].strip().lower()[-20:])
         # self.save()
 
+        # ClapScore audio-audio
         for data, inst in zip(self.res_list, self.inst_list):
             if len(data['audio_list']) != 1:
                 data['model_eval'] = 1.0
@@ -827,13 +836,6 @@ class AMusicExclude(EvalUnit):
         self.save()
 
     def human_evaluate(self):
-        instruments = tuple(set(inst['instrument'] for inst in self.inst_list)) + ('None of the above',)
-        back_list = []
-        for instrument in instruments[: -1]:
-            back_list.append([])
-            back_list[-1].append(instrument)
-            for i in range(5):
-                back_list[-1].append(f'./seed_instruction/audio/{instrument}_{i}.wav')
         human_inst_list = []
         human_data_list = []
         idx = 0
@@ -849,7 +851,6 @@ class AMusicExclude(EvalUnit):
             label_list=('Yes', 'No'),
             eval_inst_list=human_inst_list,
             data_list=human_data_list,
-            back_list=back_list,
             mm_type='a'
         )
         interface.start()
