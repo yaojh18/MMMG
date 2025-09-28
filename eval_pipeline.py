@@ -1,3 +1,5 @@
+import os
+
 from eval_image import *
 from eval_audio import *
 from eval_interleaved import *
@@ -31,7 +33,7 @@ class EvalPipeline:
         elif cat == 'a':
             self.eval_agg_dict = {
                 'sound': ['sound begin-end', 'sound inclusion', 'sound knowledge', 'sound silence'],
-                'music': ['instrument inclusion', 'instrument exclusion', 'music tempo', 'music intensity', 'music genre']
+                'music': ['instrument inclusion', 'instrument exclusion', 'music genre', 'music tempo', 'music intensity']
             }
         elif cat == 'as':
             self.eval_agg_dict = {
@@ -115,20 +117,23 @@ class EvalPipeline:
 
     @staticmethod
     def has_evaluate(res_list):
-        return all(['model_eval' in data or 'auto_eval' in data for data in res_list])
+        return all(['model_eval' in data or 'auto_eval' in data or 'model_eval_genre' in data for data in res_list])
 
     @staticmethod
     def has_human_evaluate(res_list):
-        return all(['human_eval' in data or 'human_eval_score' in data for data in res_list])
+        return all(['human_eval' in data or 'human_eval_score' or 'human_eval_genre' in data in data for data in res_list])
 
     def evaluate(self):
         for index, row in self.eval_df.iterrows():
             task_name = row['task']
-            task = self.eval_map(self.model_name, task_name, self.sample_size)
-            # if not self.has_evaluate(task.res_list):
-            task.evaluate()
-            self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
-            self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
+            if ('sound' not in task_name and 'music' not in task_name and 'instrument' not in task_name) or \
+                'sound' in task_name and any(['sound' in res_file for res_file in os.listdir(f'./output/{self.model_name}/')]) or \
+                    ('music' in task_name or 'instrument' in task_name) and any(['music' in res_file or 'instrument' in res_file for res_file in os.listdir(f'./output/{self.model_name}/')]):
+                task = self.eval_map(self.model_name, task_name, self.sample_size)
+                if not self.has_evaluate(task.res_list):
+                    task.evaluate()
+                self.eval_df.loc[index, 'accuracy'] = task.compute_accuracy()
+                self.eval_df.to_csv(f'./output/{self.model_name}/{self.cat}_eval.csv', index=False)
         agg_dict = {}
         for task_name in self.eval_agg_dict:
             agg_dict[task_name] = self.eval_df[self.eval_df['task'].isin(self.eval_agg_dict[task_name])]['accuracy'].mean()
@@ -220,10 +225,22 @@ class EvalBenchmark:
             pipeline.evaluate()
             ci_map[model_name] = pipeline.compute_ci()
             self.pipelines[model_name] = pipeline
+
+        reshaped_dfs = []
+        for model_name, pipeline in self.pipelines.items():
+            temp_df = pipeline.eval_df[['task', 'ci']].copy()
+            temp_df.rename(columns={'ci': model_name}, inplace=True)
+            reshaped_dfs.append(temp_df)
+
+        combined_df = reshaped_dfs[0]
+        for i in range(1, len(reshaped_dfs)):
+            combined_df = pd.merge(combined_df, reshaped_dfs[i], on='task', how='inner')
+        combined_df.fillna(0.0, inplace=True)
+        combined_df.to_csv(f'./output/{self.cat}_ci.csv', index=False)
+
         reshaped_dfs = []
         for model_name, pipeline in self.pipelines.items():
             temp_df = pipeline.eval_df[['task', 'accuracy']].copy()
-            temp_df.loc[len(temp_df)] = ['ci', ci_map[model_name]]
             temp_df.rename(columns={'accuracy': model_name}, inplace=True)
             reshaped_dfs.append(temp_df)
 
@@ -231,9 +248,10 @@ class EvalBenchmark:
         for i in range(1, len(reshaped_dfs)):
             combined_df = pd.merge(combined_df, reshaped_dfs[i], on='task', how='inner')
         combined_df.fillna(0.0, inplace=True)
+        combined_df.to_csv(f'./output/{self.cat}_eval.csv', index=False)
+
         model_names = self.pipelines.keys()
         results = {'models': model_names}
-        combined_df.to_csv(f'./output/{self.cat}_eval.csv', index=False)
         if method == 'absolute':
             scores = np.array(combined_df[model_names])
             scores = np.mean(scores, axis=0)
@@ -375,8 +393,8 @@ if __name__ == '__main__':
     # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
     # parser.add_argument('--model_name', type=str, default='RandomModel_0',
     #                     help='Name of the model. Make sure it is the same as your implemented class name.')
-    # parser.add_argument('--category', type=str, default='i', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
+    # parser.add_argument('--category', type=str, default='a', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--job', type=str, default='human', help='Job type: generate, evaluate, human')
     # parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
     # args = parser.parse_args()
     #
@@ -397,4 +415,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.evaluate()
+    benchmark.rank_models()

@@ -333,7 +333,7 @@ class ITCoherenceCount(ITCoherence):
             data['model_eval'] = FAILED_TOKEN
             return
         cnt = int(res.group(1))
-        queries.append(form_mm_query(I_OBJECT_COUNT_PROMPT(inst['object']), images=data['image_list'], model=self.vlm))
+        queries.append(form_mm_query(I_OBJECT_COUNT_PROMPT_LESS(inst['object']), images=data['image_list'], model=self.vlm))
         data['object'], data['count'], data['model_eval'] = inst['object'], cnt, self.idx
         self.idx += 1
 

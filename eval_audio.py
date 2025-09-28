@@ -718,11 +718,17 @@ class AMusicTempo(AMusicInstrument):
     def evaluate(self):
         self.eval_unit.evaluate_tempo()
 
+    def human_evaluate(self):
+        pass
+
     def compute_accuracy(self, return_list=False):
         auto_eval_list = [data['auto_eval_score'] for data in self.eval_unit.res_list if 'auto_eval_score' in data]
         if return_list:
             return auto_eval_list
         return np.mean(auto_eval_list)
+
+    def compute_correlation(self):
+        return -1.0, -1.0
 
     def save(self, save_all=False):
         self.eval_unit.save(save_all=save_all)

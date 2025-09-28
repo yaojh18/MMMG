@@ -8,13 +8,13 @@ import textwrap
 def plot_model_radar(cat='i'):
     if cat == 'i':
         df = pd.read_csv('./figures/i_eval.csv')
-        selected_models = ['GPT Image', 'Gemini Image', 'Imagen 3', 'Dalle 3', 'SD 3.5']
+        selected_models = ['GPT Image', 'Gemini 2.5 Image', 'Imagen 3', 'Dalle 3']
     elif cat == 'a':
         df = pd.read_csv('./figures/a_eval.csv')
         selected_models = ['Stable Audio', 'AudioLDM 2', 'Make-An-Audio 2 (audio only)', 'MusicGen (music only)']
     elif cat == 'it':
         df = pd.read_csv('./figures/it_eval.csv')
-        selected_models = ['Gemini Image', 'Gemini 2.5 + Imagen 3', 'GPT-4o + GPT Image', 'Gemini 2.5 + GPT Image']
+        selected_models = ['Gemini 2.5 Image', 'GPT Image', 'GPT-4o + GPT Image', 'Gemini 2.5 + GPT Image']
     elif cat == 'at':
         df = pd.read_csv('./figures/at_eval.csv')
         selected_models = ['Gemini 2.5 + VoxInstruct', 'Gemini 2.5 + VoiceLDM']
@@ -26,7 +26,7 @@ def plot_model_radar(cat='i'):
     angles = [(n / float(N) * 2 * np.pi) + offset for n in range(N)]
     angles += angles[:1]
 
-    plt.style.use('seaborn')
+    plt.style.use('seaborn-v0_8')
     plt.rcParams['font.family'] = 'Calibri'
     mpl.rcParams['axes.facecolor'] = 'white'
     mpl.rcParams['figure.facecolor'] = 'white'
@@ -61,4 +61,4 @@ def plot_model_radar(cat='i'):
 
 
 if __name__ == '__main__':
-    pass
+    plot_model_radar('it')
