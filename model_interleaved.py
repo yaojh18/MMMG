@@ -396,72 +396,73 @@ class MultiTurnAgent(Model):
 
 
 class Gemini2(Model):
-    model_name = 'gemini-2.0-flash-preview-image-generation'
+    model_name = 'gemini-2.5-flash-image'
     system_prompt = IT_AGENT_PROMPT
 
     def __init__(self):
         super().__init__()
 
-    def generate(self, query_list):
+    def generate_image(self, index, query):
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=GEMINI_KEY)
-        res_list = []
+        retry_count = 4
+        retry_interval = 10
+        flag = False
+        res = None
+        for _ in range(retry_count):
+            try:
+                # contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
+                contents = [query['instruction']]
+                images = query.get("image_list", [])
+                for img_path in images:
+                    contents.append(Image.open(img_path))
+                response = client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["Text", "Image"],
+                        temperature=0.1,
+                        top_p=1.0
+                    ),
+                )
+                generated_text = ""
+                generated_images = []
+                image_count = 0
+                for part in response.candidates[0].content.parts:
+                    if part.text is not None:
+                        generated_text += part.text
+                    if part.inline_data is not None:
+                        generated_images.append(Image.open(BytesIO(part.inline_data.data)))
+                        generated_text += IMAGE_TOKEN(image_count)
+                        image_count += 1
 
-        for query in tqdm(query_list):
-            retry_count = 4
-            retry_interval = 10
-            flag = False
-            for _ in range(retry_count):
-                try:
-                    # contents = [f'## System Prompt: \n{self.system_prompt}\n ## User prompt: \n' + query['instruction']]
-                    contents = [query['instruction']]
-                    images = query.get("image_list", [])
-                    for img_path in images:
-                        contents.append(Image.open(img_path))
-                    response = client.models.generate_content(
-                        model=self.model_name,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            response_modalities=["Text", "Image"],
-                            temperature=0.1,
-                            top_p=1.0
-                        ),
-                    )
-                    generated_text = ""
-                    generated_images = []
-                    image_count = 0
-                    for part in response.candidates[0].content.parts:
-                        if part.text is not None:
-                            generated_text += part.text
-                        if part.inline_data is not None:
-                            generated_images.append(Image.open(BytesIO(part.inline_data.data)))
-                            generated_text += IMAGE_TOKEN(image_count)
-                            image_count += 1
-
-                    res_list.append({
-                        "query": query,
-                        "response": generated_text,
-                        "image_list": generated_images,
-                        "audio_list": [],
-                    })
-                    flag = True
-                    break
-
-                except Exception as e:
-                    print(f"Error processing query: {query}. Error: {e}")
-                    time.sleep(retry_interval)
-                    retry_interval *= 2
-
-            if not flag:
-                res_list.append({
+                res = {
                     "query": query,
-                    "response": '',
-                    "image_list": [],
+                    "response": generated_text,
+                    "image_list": generated_images,
                     "audio_list": [],
-                })
+                }
+                flag = True
+                break
 
-        return res_list
+            except Exception as e:
+                print(f"Error processing query: {query}. Error: {e}")
+                time.sleep(retry_interval)
+                retry_interval *= 2
+
+        if not flag:
+            res = {
+                "query": query,
+                "response": '',
+                "image_list": [],
+                "audio_list": [],
+            }
+
+        return index, res
+
+    def generate(self, query_list):
+        return batch(self.generate_image, query_list)
 
 
 class SeedLlama(Model):
@@ -818,6 +819,7 @@ class GPTImage(Model):
                     temperature=0.1,
                     top_p=1.0,
                     tools=[{"type": "image_generation"}],
+                    tool_choice={"type": "image_generation"},
                 )
                 res = ''
                 image_list = []
@@ -851,8 +853,3 @@ class GPTImage(Model):
 
     def generate(self, query_list):
         return batch(self.generate_image, query_list, model_name=self.model_name)
-
-### TODO
-
-class Gemini2_5(GPTImage):
-    pass

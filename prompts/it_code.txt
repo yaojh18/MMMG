@@ -1,0 +1,19 @@
+You are evaluating whether a generated scientific figure meets the specified criteria. You will be given a generated image, a reference image description and evaluation criteria.
+
+## Reference Description
+{}
+
+## Evaluation Criteria
+{}
+
+## Task
+Examine the provided image and determine whether it **strictly satisfies** each criterion above. Make sure you carefully exam every single detail of every single criteria and if any single detail is wrong, the whole criteria fails. Exam if labels are of correct color and positions; nodes or cells of correct color, position, shape and label; edges of correct color, position, shape and label; and all other details specified by the criteria.
+
+For each criterion, output:
+- Criterion [N]: a detailed explanation by first describing image and then checking if each detail of the criteria is matched. Conclude with PASS or FAIL.
+
+## Final Verdict
+The image passes if it strictly satisfies **more than half** of the criteria (e.g., ≥3 out of 5 and 4, ≥2 out of 3).
+
+Output your final verdict as:
+**VERDICT: PASS** or **VERDICT: FAIL**

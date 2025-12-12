@@ -46,3 +46,6 @@ with open('prompts/i_multi_turn_agent.txt', 'r', encoding='utf-8') as f:
 
 with open('prompts/a_multi_turn_agent.txt', 'r', encoding='utf-8') as f:
     A_MULTI_TURN_AGENT_PROMPT = ''.join(f.readlines())
+
+with open('prompts/it_code.txt', 'r', encoding='utf-8') as f:
+    IT_CODE_PROMPT = ''.join(f.readlines())

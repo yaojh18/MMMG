@@ -1,6 +1,7 @@
 import itertools
 
 from eval import EvalUnit
+from model_interleaved import HybridAgent
 from prompt import *
 from interface import *
 from eval_image import IOCR
@@ -650,10 +651,11 @@ class ITCoherenceCode(ITCoherenceColor):
     inst_name = 'it_coherence_code'
     allow_multi_images = True
     default_eval = 0.0
+    vlm = 'gemini'
 
     def evaluate(self):
-        super().evaluate()
         self.load_inst_mm()
+        super().evaluate()
         text_pattern = r'<image_start><image_\d+><image_end>'
         for data, inst in zip(self.res_list, self.inst_list):
             texts = re.split(text_pattern, data['response'])
@@ -665,17 +667,39 @@ class ITCoherenceCode(ITCoherenceColor):
         self.save()
 
     def model_process_data(self, data, inst, res, queries):
-        queries.append(form_mm_query(I_OBJECT_EXIST_COT_PROMPT(inst['object']), images=data['image_list'][-1:], model=self.vlm))
-        data['object'], data['model_eval'] = inst['object'], self.idx
+        if 'criteria' in inst:
+            queries.append(form_mm_query(
+                IT_CODE_PROMPT.format(inst['caption'], '\n'.join(f'{i + 1}. {criteria}' for i, criteria in enumerate(inst['criteria']))),
+                images=[data['image_list'][-1]],
+                model=self.vlm
+            ))
+            data['criteria'] = inst['criteria']
+        else:
+            queries.append(form_mm_query(
+                I_OBJECT_EXIST_COT_PROMPT(inst['caption']),
+                images=[data['image_list'][-1]],
+                model=self.vlm
+            ))
+
+        data['caption'], data['model_eval'] = inst['caption'], self.idx
         self.idx += 1
 
     @staticmethod
     def model_process_response(data, responses):
-        data['model_eval'] = float('yes' in responses[data['model_eval']].strip().lower()[-20:])
+        if 'criteria' in data:
+            data['model_eval'] = float('VERDICT: PASS' in responses[data['model_eval']])
+        else:
+            data['model_eval'] = float('yes' in responses[data['model_eval']].strip().lower()[-20:])
 
     def human_process_data(self, data, human_inst_list, human_res_list):
-        if 'object' in data:
-            human_inst_list.append(f"Is/Are there {data['object']} in the given image?\n")
+        if 'caption' in data:
+            if 'criteria' in data:
+                human_inst_list.append(IT_CODE_PROMPT.format(
+                    data['caption'],
+                    '\n'.join(f'{i + 1}. {criteria}' for i, criteria in enumerate(data['criteria'])))
+                )
+            else:
+                human_inst_list.append(I_OBJECT_EXIST_COT_PROMPT(data['caption']))
             human_res_list.append(data)
             data['human_eval'] = self.idx
             self.idx += 1
@@ -694,4 +718,6 @@ class ITCoherenceCode(ITCoherenceColor):
 
 
 if __name__ == '__main__':
-    pass
+    task = ITCoherenceCode(model_name='GPTImage', sample_size=4)
+    task.evaluate()
+    print(task.compute_accuracy())

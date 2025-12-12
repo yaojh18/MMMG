@@ -1,4 +1,8 @@
+import json
 import os
+import cairosvg
+import pandas as pd
+import difflib
 import random
 import shutil
 import matplotlib.pyplot as plt
@@ -141,12 +145,82 @@ def sample_from_star_vector():
     for data in dataset['test']:
         if 1000 < len(data['Svg']) < 2000:
             collected_data.append(data['Svg'])
-    random.shuffle(collected_data)
-    with open(f'./seed_instruction/it_coherence_code.jsonl', 'w', encoding='utf-8') as f:
-        for i, data in enumerate(collected_data[:100]):
-            f.write(json.dumps({f'instruction': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser. \n", 'ref_image_list': [i], 'instruction_para': f"### SVG Code:\n{data}\n### Instruction:\nWhat does this SVG code represent? Analyze the elements step by step, then create a rendered image showing how it would appear in a browser.\n"}) + '\n')
-    for i, data in enumerate(collected_data[:100]):
-        cairosvg.svg2png(bytestring=data, write_to=f'./seed_instruction/image/it_coherence_code_{i}.png', output_width=1024, output_height=1024)
+    for i, data in enumerate(collected_data):
+        cairosvg.svg2png(bytestring=data, write_to=f'./temp/it_coherence_code_{i}.png', output_width=1024, output_height=1024)
+
+
+def sample_from_datikz():
+    dataset = load_dataset('starvector/svg-emoji')
+    collected_data = []
+    for data in dataset['test']:
+        if 1500 < len(data['Svg']) < 2500:
+            collected_data.append(data['Svg'])
+    for i, data in enumerate(collected_data):
+        cairosvg.svg2png(bytestring=data, write_to=f'./temp/it_coherence_code_{i}.png', output_width=1024, output_height=1024)
+
+
+def generate_diff(code1: str, code2: str,
+                  filename1: str = "a/file.py",
+                  filename2: str = "b/file.py") -> str:
+    """
+    生成 code2 相对于 code1 的 git 格式 diff
+    """
+    lines1 = code1.splitlines(keepends=True)
+    lines2 = code2.splitlines(keepends=True)
+
+    # 确保最后一行有换行符
+    if lines1 and not lines1[-1].endswith('\n'):
+        lines1[-1] += '\n'
+    if lines2 and not lines2[-1].endswith('\n'):
+        lines2[-1] += '\n'
+
+    diff = difflib.unified_diff(
+        lines1, lines2,
+        fromfile=filename1,
+        tofile=filename2
+    )
+
+    return ''.join(diff)
+
+def sample_from_svgedit():
+    def generate_diff(code1: str, code2: str):
+        lines1 = code1.splitlines(keepends=True)
+        lines2 = code2.splitlines(keepends=True)
+
+        if lines1 and not lines1[-1].endswith('\n'):
+            lines1[-1] += '\n'
+        if lines2 and not lines2[-1].endswith('\n'):
+            lines2[-1] += '\n'
+
+        diff = difflib.unified_diff(lines1, lines2)
+        return diff
+
+    dataset = json.load(open('./assets/dataset.json', 'r', encoding='utf-8'))
+    output_list = []
+    idx = 40
+
+    for data in dataset:
+        with open(f'./data/{data["before"].split(".")[0]}.svg', 'r', encoding='utf-8') as f:
+            before_svg = ''.join(f.readlines())
+        with open(f'./data/{data["after"].split(".")[0]}.svg', 'r', encoding='utf-8') as f:
+            after_svg = ''.join(f.readlines())
+        if 1000 < len(before_svg) and 1000 < len(after_svg):
+            diff = ''.join(list(generate_diff(before_svg, after_svg))[2:])
+            output_list.append({
+                'instruction': f"### SVG Code Before:\n{before_svg}\n### Diff:\n{diff}\n### Instruction:\nYou are given an original SVG image with its source code, along with a git diff patch that modifies the SVG. Your task is to carefully analyze the patch to understand what changes are being made. Then, create an image showing how the new SVG code would be rendered in a browser.",
+                'instruction_para': f"### SVG Code Before:\n{before_svg}\n### Diff:\n{diff}\n### Instruction:\nYou are given an original SVG image with its source code, along with a git diff patch that modifies the SVG. Your task is to carefully analyze the patch to understand what changes are being made. Then, create an image showing how the new SVG code would be rendered in a browser.",
+                'image_list': [idx],
+                'ref_image_list': [idx + 1]
+            })
+            cairosvg.svg2png(bytestring=before_svg, write_to=f'./temp/image/it_coherence_code_{idx}.png',
+                             output_width=1024, output_height=1024)
+            cairosvg.svg2png(bytestring=after_svg, write_to=f'./temp/image/it_coherence_code_{idx + 1}.png',
+                             output_width=1024, output_height=1024)
+            idx += 2
+    with open('./temp/it_coherence_code.jsonl', 'w') as f:
+        for data in output_list:
+            f.write(json.dumps(data) + '\n')
+
 
 
 def create_huggingface_dataset():
@@ -207,4 +281,4 @@ def create_huggingface_dataset():
 
 
 if __name__ == '__main__':
-    validate_image_editing_instruction()
+    sample_from_svgedit()

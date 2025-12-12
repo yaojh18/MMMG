@@ -33,7 +33,7 @@ SAMPLE_RATE = 22050
 VISION_MODEL = 'openai'
 
 
-def batch(func_name: Callable, data_list, num_worker=16, **kwargs):
+def batch(func_name: Callable, data_list, num_worker=64, **kwargs):
     with ProcessPoolExecutor(max_workers=num_worker) as executor:
         futures = [executor.submit(func_name, index, data, **kwargs) for index, data in enumerate(data_list)]
         res_dict = collections.defaultdict(None)
