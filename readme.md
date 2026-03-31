@@ -1,18 +1,3 @@
-# MMMG Benchmark
-
-[**🏆 Leaderboard**](https://yaojh18.github.io/mmmg-leaderboard/#leaderboard) | [**🤗 MMMG**](https://huggingface.co/datasets/UW-FMRL2/MMMG) | [**📖 Paper**](https://arxiv.org/abs/2505.17613v1)
-
-This repo contains the evaluation pipeline for the paper "[MMMG: a Comprehensive and Reliable Evaluation Suite for Multitask Multimodal Generation](https://arxiv.org/abs/2505.17613v1)".
-
-[//]: # (## 🔔News)
-
-[//]: # ()
-[//]: # (- **🔥[2024-09-05] Introducing [MMMU-Pro]&#40;https://arxiv.org/abs/2409.02813&#41;, a robust version of MMMU benchmark for multimodal AI evaluation! 🚀**)
-
-[//]: # (- **🚀[2024-01-31]: We added Human Expert performance on the [Leaderboard]&#40;https://mmmu-benchmark.github.io/#leaderboard&#41;!🌟**)
-
-[//]: # (- **🔥[2023-12-04]: Our evaluation server for test set is now availble on [EvalAI]&#40;https://eval.ai/web/challenges/challenge-page/2179/overview&#41;. We welcome all submissions and look forward to your participation! 😆**)
-
 ## Introduction
 
 Automatically evaluating multimodal generation presents a significant challenge, as automated metrics often struggle to align reliably with human evaluation, especially for complex tasks that involve multiple modalities. To address this, we present MMMG, a comprehensive and human-aligned benchmark for multimodal generation across 4 modality combinations (image, audio, interleaved text and image, interleaved text and audio), with a focus on tasks that present significant challenges for generation models, while still enabling reliable automatic evaluation through a combination of models and programs. MMMG encompasses 49 tasks (including 29 newly developed ones), each with a carefully designed evaluation pipeline, and 937 instructions to systematically assess reasoning, controllability, and other key capabilities of multimodal generation models. Extensive validation demonstrates that MMMG is highly aligned with human evaluation, achieving an average agreement of 94.3%. Benchmarking results on 24 multimodal generation models reveal that even though the state-of-the-art model, GPT Image, achieves 78.3% accuracy for image generation, it falls short on multimodal reasoning and interleaved generation. Furthermore, results suggest considerable headroom for improvement in audio generation, highlighting an important direction for future research.
@@ -85,23 +70,4 @@ To replicate the human evaluation pipeline reported in paper, please run:
 ```bash
 pip install gradio
 python eval_pipeline.py --model_name model_name --category category --job human
-```
-
-## Contact
-- Jihan Yao: jihany2@cs.washington.edu
-- Yushi Hu: yushihu@uw.edu
-
-## Citation
-
-**BibTeX:**
-```bibtex
-@misc{yao2025mmmgcomprehensivereliableevaluation,
-      title={MMMG: a Comprehensive and Reliable Evaluation Suite for Multitask Multimodal Generation}, 
-      author={Jihan Yao and Yushi Hu and Yujie Yi and Bin Han and Shangbin Feng and Guang Yang and Bingbing Wen and Ranjay Krishna and Lucy Lu Wang and Yulia Tsvetkov and Noah A. Smith and Banghua Zhu},
-      year={2025},
-      eprint={2505.17613},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2505.17613}, 
-}
 ```
