@@ -11,7 +11,7 @@ class ModelCustomized(Model):
 
     def generate(self, query_list):
         """
-        Args: query_list:
+        Args: query_list: List[dict]
         Format of a query (dict) in the query list:
         {
             # instruction: instruction in text

@@ -390,29 +390,29 @@ class EvalBenchmark:
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
-    # parser.add_argument('--model_name', type=str, default='RandomModel_0',
-    #                     help='Name of the model. Make sure it is the same as your implemented class name.')
-    # parser.add_argument('--category', type=str, default='a', help='Subcategory of the benchmark: i, a, it, at.')
-    # parser.add_argument('--job', type=str, default='human', help='Job type: generate, evaluate, human')
-    # parser.add_argument('--sample_size', type=int, default=2, help='Sample number of each instruction.')
-    # args = parser.parse_args()
-    #
-    # print('Running pipeline for model:', args.model_name)
-    # pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
-    # if args.job == 'evaluate':
-    #     pipeline.evaluate()
-    # elif args.job == 'human':
-    #     pipeline.human_evaluate()
-    # elif args.job == 'ci':
-    #     pipeline.compute_ci()
-    # else:
-    #     pipeline.generate()
-
-    parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
-    parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    parser = argparse.ArgumentParser(description='Evaluation Pipeline:')
+    parser.add_argument('--model_name', type=str, default='Gemini2',
+                        help='Name of the model. Make sure it is the same as your implemented class name.')
+    parser.add_argument('--category', type=str, default='quick_test', help='Subcategory of the benchmark: i, a, it, at.')
+    parser.add_argument('--job', type=str, default='evaluate', help='Job type: generate, evaluate, human')
     parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
     args = parser.parse_args()
 
-    benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
-    benchmark.rank_models()
+    print('Running pipeline for model:', args.model_name)
+    pipeline = EvalPipeline(args.model_name, args.category, args.sample_size)
+    if args.job == 'evaluate':
+        pipeline.evaluate()
+    elif args.job == 'human':
+        pipeline.human_evaluate()
+    elif args.job == 'ci':
+        pipeline.compute_ci()
+    else:
+        pipeline.generate()
+
+    # parser = argparse.ArgumentParser(description='Evaluation Benchmark:')
+    # parser.add_argument('--category', type=str, default='it', help='Subcategory of the benchmark: i, a, it, at.')
+    # parser.add_argument('--sample_size', type=int, default=4, help='Sample number of each instruction.')
+    # args = parser.parse_args()
+    #
+    # benchmark = EvalBenchmark(cat=args.category, sample_size=args.sample_size)
+    # benchmark.evaluate()

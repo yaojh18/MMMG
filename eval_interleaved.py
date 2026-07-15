@@ -1,7 +1,6 @@
 import itertools
 
 from eval import EvalUnit
-from model_interleaved import HybridAgent
 from prompt import *
 from interface import *
 from eval_image import IOCR
@@ -718,6 +717,4 @@ class ITCoherenceCode(ITCoherenceColor):
 
 
 if __name__ == '__main__':
-    task = ITCoherenceCode(model_name='GPTImage', sample_size=4)
-    task.evaluate()
-    print(task.compute_accuracy())
+    pass

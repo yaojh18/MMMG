@@ -61,4 +61,4 @@ def plot_model_radar(cat='i'):
 
 
 if __name__ == '__main__':
-    plot_model_radar('it')
+    pass

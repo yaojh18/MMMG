@@ -398,9 +398,6 @@ class ASpeechConstraint(ASpeechModify):
     inst_name = 'a_speech_constraint'
 
 
-# -----------------------
-# Bin Added (09/16/2025)
-# -----------------------
 class ASpeechTranslate(EvalUnit):
     inst_name = 'a_speech_translate'
     
@@ -438,9 +435,6 @@ class ASpeechTranslate(EvalUnit):
     def compute_correlation(self):
         return -1.0, -1.0
 
-# -----------------------
-# Bin Added (09/18/2025)
-# -----------------------
 class ASpeechRetrieve(EvalUnit):
     inst_name = 'a_speech_retrieve'
     

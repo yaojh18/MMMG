@@ -1,9 +1,7 @@
 .idea
 __pycache__
-output
-datasets
 models
-DreamSim
-figures
+output
+.DS_Store
 evaluators
-rebuttal
+figures
